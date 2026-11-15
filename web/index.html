@@ -155,7 +155,11 @@
     <label style="flex:0 0 auto;font-weight:400"><input type="checkbox" id="esl_sun" style="width:20px;height:20px"> 日出日落</label>
     <label style="flex:0 0 auto;font-weight:400"><input type="checkbox" id="esl_brand" style="width:20px;height:20px"> 品牌</label>
   </div>
-  <div class="row"><label>墨水屏自定义文字</label><input type="text" id="esl_text" maxlength="16" placeholder="一行小字，如 今天也要加油（留空不显示）"></div>
+  <div class="row">
+    <label>墨水屏自定义文字</label>
+    <input type="text" id="esl_text" maxlength="16" placeholder="一行小字，如 今天也要加油（留空不显示）">
+    <button id="btnHito" class="ghost" disabled title="联网拉一句一言（拉不到用内置句库）">拉一句</button>
+  </div>
   <div class="row"><label>网格背景</label><input type="checkbox" id="deco_grid" style="width:22px;height:22px;flex:0 0 auto"></div>
   <div class="row"><label>昼夜自动换主题</label><input type="checkbox" id="theme_auto" style="width:22px;height:22px;flex:0 0 auto"></div>
   <div class="row"><label>白天 / 夜里</label>
@@ -260,7 +264,7 @@ function setConnected(on) {
   $('btnConnect').disabled = on;
   for (const id of ['btnDisconnect','btnRefresh','btnSave','btnReconnect','btnReboot',
                     'btnBgUpload','btnBgClear','btnShot','btnKey0','btnKey1','btnKey2',
-                    'btnRot0','btnRot90','btnRot180','btnRot270','btnThemeApply',
+                    'btnRot0','btnRot90','btnRot180','btnRot270','btnThemeApply','btnHito',
                     'btnLogRam','btnLogFlash','btnLogClear','btnLogCopy']) {
     $(id).disabled = !on;
   }
@@ -732,6 +736,25 @@ for (const deg of [0, 90, 180, 270]) {
     sel.innerHTML = opts.map(o => `<option value="${o.value}">${o.textContent}</option>`).join('');
   }
 })();
+
+/* 拉一句一言：发 HITO，等板子回 {"ok":true,"hitokoto":"..."} */
+$('btnHito').onclick = async () => {
+  if (!connected) { alert('先连接串口'); return; }
+  $('btnHito').disabled = true;
+  try {
+    log('正在拉一句…（网络不通会用板子里内置的句子）');
+    await send('HITO');
+    const ack = await waitAck(40000);
+    if (ack && ack.ok && ack.hitokoto) {
+      $('esl_text').value = ack.hitokoto;
+      log('拿到：' + ack.hitokoto);
+    } else {
+      log('拉取失败：' + ((ack && ack.err) || '超时'));
+    }
+  } finally {
+    $('btnHito').disabled = false;
+  }
+};
 
 /* ---------------- 主题 ---------------- */
 $('theme').onchange = () => {

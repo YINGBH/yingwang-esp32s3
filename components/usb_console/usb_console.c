@@ -38,6 +38,7 @@ void app_set_rotation(int deg);
 void bsp_display_set_gap_adj(int x, int y);
 void app_set_portal_auth(bool on);
 #include "esl_ble.h"
+#include "hitokoto.h"
 
 /* 截图期间把日志"吞掉"：不临时改全局日志级别（那会覆盖别的模块单独调过的级别，
    恢复时也只能恢复成 INFO），而是换掉 vprintf 钩子，结束后原样换回来。
@@ -539,6 +540,46 @@ static void logout_task(void *arg)
     vTaskDelete(NULL);
 }
 
+/* HITO：后台拉一条一言 → 写 esl_text → 保存 → 重画价签 */
+static void hito_task(void *arg)
+{
+    (void) arg;
+
+    char sentence[64];
+    if (!hitokoto_fetch(sentence, sizeof(sentence))) {
+        printf("@{\"ok\":false,\"err\":\"net\"}\n");
+        fflush(stdout);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    app_settings_t cfg;
+    config_store_snapshot(&cfg);
+    strlcpy(cfg.esl_text, sentence, sizeof(cfg.esl_text));
+    if (config_store_save(&cfg) != ESP_OK) {
+        printf("@{\"ok\":false,\"err\":\"nvs\"}\n");
+        fflush(stdout);
+        vTaskDelete(NULL);
+        return;
+    }
+    esl_ble_set_ui(cfg.esl_layout, cfg.esl_opts ? cfg.esl_opts : 0x0F, cfg.esl_text);
+    app_state_request(APP_ACT_REDRAW);
+
+    cJSON *r = cJSON_CreateObject();
+    if (r) {
+        cJSON_AddBoolToObject(r, "ok", true);
+        cJSON_AddStringToObject(r, "hitokoto", sentence);
+        char *s = cJSON_PrintUnformatted(r);
+        if (s) {
+            printf("@%s\n", s);
+            cJSON_free(s);
+        }
+        cJSON_Delete(r);
+    }
+    fflush(stdout);
+    vTaskDelete(NULL);
+}
+
 static void cli_task(void *arg)
 {
     (void) arg;
@@ -725,6 +766,11 @@ static void cli_task(void *arg)
                 reply_ok();
             } else {
                 reply_err(esp_err_to_name(e));
+            }
+        } else if (strcmp(line, "HITO") == 0) {
+            /* 联网拉一句「一言」：HTTP 吃栈，丢后台任务 */
+            if (xTaskCreate(hito_task, "hito", 8192, NULL, 4, NULL) != pdPASS) {
+                reply_err("no_mem");
             }
         } else if (strcmp(line, "ESLPREP") == 0) {
             /* 调试：直接画一张信息页进缓冲（不改状态、不推蓝牙） */
