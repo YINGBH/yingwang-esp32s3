@@ -47,6 +47,19 @@ typedef struct {
        off_bright : 息屏后背光；0=全关+清屏，1..100=低亮度常显（AOD，减轻残影） */
     uint8_t  charge_off;
     uint8_t  off_bright;
+
+    /* ── 主题（末尾追加；旧 blob 读出来全是 0 = 深蓝默认主题）──────
+       theme_id   : 内置主题序号 0..BSP_THEME_COUNT-1；0xFF = 自定义
+       theme_bg   : 自定义背景色（RGB565）
+       theme_fg_  : 保留 */
+    uint8_t  theme_id;
+    uint16_t theme_bg;
+    uint16_t theme_accent;
+
+    /* ── 装饰层（二次元定制）：边框 / 角标图标 / 角标文字 ────── */
+    uint8_t  deco_border;     /* 0 无 1 细线 2 圆角 3 双线 */
+    uint8_t  deco_icon;       /* 0 无 1 星星 2 爱心 3 音符 4 樱花 5 月亮 */
+    char     deco_tag[16];    /* 左下角小字，空 = 不显示 */
 } app_settings_t;
 
 /**

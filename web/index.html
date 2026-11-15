@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -101,6 +101,51 @@
   <div class="row"><label>息屏 分钟</label><input type="number" id="screen_off" min="0" max="60"></div>
   <div class="row"><label>充电时也熄屏</label><input type="checkbox" id="charge_off" style="width:22px;height:22px;flex:0 0 auto"></div>
   <div class="row"><label>熄屏亮度 0-100</label><input type="number" id="off_bright" min="0" max="100" placeholder="0=全黑清屏；>0 低亮度常显"></div>
+  <div class="row">
+    <label>主题</label>
+    <select id="theme" style="flex:1;padding:6px;border-radius:8px">
+      <option value="0">深蓝（默认）</option>
+      <option value="1">纯黑 · OLED</option>
+      <option value="2">森林绿</option>
+      <option value="3">紫罗兰</option>
+      <option value="4">暖白 · 纸感</option>
+      <optgroup label="二次元">
+        <option value="5">初音未来 · 葱绿</option>
+        <option value="6">洛天依 · 天依蓝</option>
+        <option value="7">鹿乃 · 樱粉</option>
+        <option value="8">爱莉希雅 · 粉紫</option>
+        <option value="9">蕾姆 · 冰蓝</option>
+        <option value="10">赤红 · 热血</option>
+      </optgroup>
+      <option value="-1">自定义…</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>边框</label>
+    <select id="deco_border" style="flex:1;padding:6px;border-radius:8px">
+      <option value="0">无</option>
+      <option value="1">细线</option>
+      <option value="2">圆角</option>
+      <option value="3">双线</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>角标图标</label>
+    <select id="deco_icon" style="flex:1;padding:6px;border-radius:8px">
+      <option value="0">无</option>
+      <option value="1">★ 星星</option>
+      <option value="2">♥ 爱心</option>
+      <option value="3">♪ 音符</option>
+      <option value="4">🌸 樱花</option>
+      <option value="5">🌙 月亮</option>
+    </select>
+  </div>
+  <div class="row"><label>角标文字</label><input type="text" id="deco_tag" maxlength="4" placeholder="最多 4 字，如 初音（留空不显示）"></div>  <div class="row" id="theme_custom_row" style="display:none">
+    <label>自定义</label>
+    <input type="color" id="theme_bg" value="#101c44" title="背景色" style="width:52px;height:34px;padding:0;border:none;background:none">
+    <input type="color" id="theme_accent" value="#ffe000" title="强调色" style="width:52px;height:34px;padding:0;border:none;background:none">
+    <button id="btnThemeApply" class="ghost" disabled>应用</button>
+  </div>
   <div class="row"><label>闹钟音量 0-100</label><input type="number" id="alarm_vol" min="0" max="100"></div>
   <div class="row">
     <label>屏幕方向</label>
@@ -187,7 +232,7 @@ function setConnected(on) {
   $('btnConnect').disabled = on;
   for (const id of ['btnDisconnect','btnRefresh','btnSave','btnReconnect','btnReboot',
                     'btnBgUpload','btnBgClear','btnShot','btnKey0','btnKey1','btnKey2',
-                    'btnRot0','btnRot90','btnRot180','btnRot270',
+                    'btnRot0','btnRot90','btnRot180','btnRot270','btnThemeApply',
                     'btnLogRam','btnLogFlash','btnLogClear','btnLogCopy']) {
     $(id).disabled = !on;
   }
@@ -332,6 +377,20 @@ function renderStatus(o) {
   if (document.activeElement !== $('screen_off')) $('screen_off').value = c.screen_off ?? 0;
   $('charge_off').checked = (c.charge_off ?? 0) != 0;
   if (document.activeElement !== $('off_bright')) $('off_bright').value = c.off_bright ?? 0;
+  /* 主题：-1 = 自定义，用 bg/accent 两个颜色回填 */
+  {
+    const tid = (c.theme ?? 0);
+    if (document.activeElement !== $('theme')) $('theme').value = tid === -1 ? '-1' : String(tid);
+    $('theme_custom_row').style.display = (tid === -1 || $('theme').value === '-1') ? 'flex' : 'none';
+    const toHex = (v) => '#' + (((v ?? 0) & 0xF800) << 8 | ((v ?? 0) & 0x07E0) << 5 | ((v ?? 0) & 0x001F) << 3)
+      .toString(16).padStart(6, '0');
+    if (c.theme_bg) $('theme_bg').value = toHex(c.theme_bg);
+    if (c.theme_accent) $('theme_accent').value = toHex(c.theme_accent);
+  }
+  /* 装饰层 */
+  if (document.activeElement !== $('deco_border')) $('deco_border').value = String(c.deco_border ?? 0);
+  if (document.activeElement !== $('deco_icon')) $('deco_icon').value = String(c.deco_icon ?? 0);
+  if (document.activeElement !== $('deco_tag')) $('deco_tag').value = c.deco_tag || '';
   if (document.activeElement !== $('alarm_vol')) $('alarm_vol').value = o.alarm_vol ?? 80;
 }
 
@@ -620,6 +679,22 @@ for (const deg of [0, 90, 180, 270]) {
   };
 }
 
+/* ---------------- 主题 ---------------- */
+$('theme').onchange = () => {
+  $('theme_custom_row').style.display = $('theme').value === '-1' ? 'flex' : 'none';
+};
+$('btnThemeApply').onclick = async () => {
+  if (!connected) { alert('先连接串口'); return; }
+  const bg = '0x' + $('theme_bg').value.replace('#', '');
+  const ac = '0x' + $('theme_accent').value.replace('#', '');
+  for (const [k, v] of [['theme_bg', bg], ['theme_accent', ac]]) {
+    await send(`SET ${k}=${v}`);
+    const ack = await waitAck(6000);
+    if (!ack || !ack.ok) { log(`主题下发失败：${k}`); return; }
+  }
+  $('theme').value = '-1';
+  log(`主题已切换：背景 ${bg}，强调 ${ac}`);
+};
 $('btnSave').onclick = async () => {
   if (!connected || !writer) { alert('先连接串口'); return; }
   const kv = [
@@ -639,6 +714,19 @@ $('btnSave').onclick = async () => {
     ['charge_off', $('charge_off').checked ? 1 : 0],
     ['off_bright', $('off_bright').value],
   ];
+  /* 主题：选了内置就只发 theme；选了"自定义"就发 bg + accent（各自会存进 NVS） */
+  {
+    const tid = $('theme').value;
+    if (tid !== '-1') {
+      kv.push(['theme', tid]);
+    } else {
+      kv.push(['theme_bg', '0x' + $('theme_bg').value.replace('#', '')]);
+      kv.push(['theme_accent', '0x' + $('theme_accent').value.replace('#', '')]);
+  kv.push(['deco_border', $('deco_border').value]);
+  kv.push(['deco_icon', $('deco_icon').value]);
+  kv.push(['deco_tag', $('deco_tag').value.trim() || '-']);
+    }
+  }
   // 逐条下发并确认：以前一口气全发、不检查回复，某一条被板子拒了（比如 unknown_key）
   // 界面上完全看不出来，用户会以为"保存成功"
   const bad = [];

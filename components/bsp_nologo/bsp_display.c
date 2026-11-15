@@ -15,6 +15,138 @@
 
 static const char *TAG = "bsp_display";
 
+/* ================================================================ 主题 */
+
+/* 内置主题：前 4 套是深色系，第 5 套是浅色（纸感）。
+   命名参考常见的编辑器/终端配色，方便"闭眼选" */
+static const bsp_theme_t THEMES[BSP_THEME_COUNT] = {
+    /* 0 · 深蓝（默认，原配色） */
+    { .bg = 0x1082, .fg = 0xFFFF, .dim = 0x8410, .accent = 0xFFE0,
+      .ok = 0x07E0, .warn = 0xF800, .info = 0x07FF, .panel = 0x2104 },
+    /* 1 · 纯黑（OLED 风，最省眼） */
+    { .bg = 0x0000, .fg = 0xFFFF, .dim = 0x7BEF, .accent = 0x07FF,
+      .ok = 0x07E0, .warn = 0xF800, .info = 0x5D9F, .panel = 0x18E3 },
+    /* 2 · 森林绿 */
+    { .bg = RGB565(8, 26, 18), .fg = RGB565(230, 255, 235), .dim = RGB565(110, 150, 120),
+      .accent = RGB565(120, 230, 140), .ok = RGB565(80, 220, 120), .warn = RGB565(255, 90, 90),
+      .info = RGB565(140, 220, 200), .panel = RGB565(18, 46, 32) },
+    /* 3 · 紫罗兰 */
+    { .bg = RGB565(28, 18, 46), .fg = RGB565(245, 235, 255), .dim = RGB565(150, 130, 180),
+      .accent = RGB565(255, 140, 255), .ok = RGB565(120, 240, 180), .warn = RGB565(255, 100, 110),
+      .info = RGB565(150, 190, 255), .panel = RGB565(48, 32, 72) },
+    /* 4 · 暖白（纸感，浅底深字；适合白天/强光） */
+    { .bg = RGB565(250, 246, 236), .fg = RGB565(20, 20, 24), .dim = RGB565(120, 115, 105),
+      .accent = RGB565(200, 60, 40), .ok = RGB565(20, 130, 70), .warn = RGB565(200, 30, 30),
+      .info = RGB565(30, 90, 170), .panel = RGB565(228, 222, 208) },
+
+    /* ---- 二次元配色（取自角色印象色，只借色不借素材）---- */
+    /* 5 · 初音未来：葱绿 */
+    { .bg = RGB565(10, 20, 24), .fg = RGB565(235, 255, 250), .dim = RGB565(110, 150, 145),
+      .accent = RGB565(57, 197, 187), .ok = RGB565(120, 230, 190), .warn = RGB565(255, 100, 120),
+      .info = RGB565(150, 220, 240), .panel = RGB565(20, 42, 46) },
+    /* 6 · 洛天依：天依蓝 */
+    { .bg = RGB565(12, 20, 40), .fg = RGB565(235, 245, 255), .dim = RGB565(120, 145, 180),
+      .accent = RGB565(102, 204, 255), .ok = RGB565(120, 230, 200), .warn = RGB565(255, 110, 140),
+      .info = RGB565(140, 190, 255), .panel = RGB565(22, 34, 62) },
+    /* 7 · 鹿乃：樱粉 */
+    { .bg = RGB565(40, 20, 30), .fg = RGB565(255, 240, 246), .dim = RGB565(180, 140, 160),
+      .accent = RGB565(255, 158, 196), .ok = RGB565(255, 200, 220), .warn = RGB565(255, 80, 100),
+      .info = RGB565(200, 170, 255), .panel = RGB565(62, 30, 44) },
+    /* 8 · 爱莉希雅：粉紫 */
+    { .bg = RGB565(28, 18, 40), .fg = RGB565(250, 240, 255), .dim = RGB565(160, 140, 185),
+      .accent = RGB565(201, 160, 255), .ok = RGB565(150, 240, 210), .warn = RGB565(255, 120, 150),
+      .info = RGB565(255, 190, 230), .panel = RGB565(48, 32, 66) },
+    /* 9 · 蕾姆：冰蓝 */
+    { .bg = RGB565(12, 18, 30), .fg = RGB565(235, 248, 255), .dim = RGB565(130, 155, 180),
+      .accent = RGB565(126, 200, 227), .ok = RGB565(140, 240, 220), .warn = RGB565(255, 120, 130),
+      .info = RGB565(170, 215, 255), .panel = RGB565(22, 32, 50) },
+    /* 10 · 赤红：热血 */
+    { .bg = RGB565(26, 12, 14), .fg = RGB565(255, 238, 238), .dim = RGB565(180, 130, 130),
+      .accent = RGB565(255, 77, 109), .ok = RGB565(255, 200, 140), .warn = RGB565(255, 60, 60),
+      .info = RGB565(255, 170, 150), .panel = RGB565(48, 20, 24) },
+};
+
+static const char *THEME_NAMES[BSP_THEME_COUNT] = {
+    "深蓝", "纯黑", "森林", "紫罗兰", "暖白",
+    "初音未来", "洛天依", "鹿乃", "爱莉希雅", "蕾姆", "赤红",
+};
+
+bsp_theme_t g_theme = {
+    .bg = 0x1082, .fg = 0xFFFF, .dim = 0x8410, .accent = 0xFFE0,
+    .ok = 0x07E0, .warn = 0xF800, .info = 0x07FF, .panel = 0x2104,
+};
+
+static int s_theme_idx = 0;
+
+const char *bsp_theme_name(int idx)
+{
+    if (idx < 0 || idx >= BSP_THEME_COUNT) {
+        return NULL;
+    }
+    return THEME_NAMES[idx];
+}
+
+void bsp_theme_load_preset(int idx)
+{
+    if (idx < 0 || idx >= BSP_THEME_COUNT) {
+        return;
+    }
+    g_theme = THEMES[idx];
+    s_theme_idx = idx;
+    ESP_LOGI(TAG, "主题：%s（%d）", THEME_NAMES[idx], idx);
+}
+
+/* RGB565 亮度（0-255），用来判断浅底/深底 */
+static int luma565(uint16_t c)
+{
+    int r = (c >> 11) & 0x1F;
+    int g = (c >> 5) & 0x3F;
+    int b = c & 0x1F;
+    return (r * 8 + g * 4 + b * 8) / 3;
+}
+
+void bsp_theme_custom(uint16_t bg, uint16_t accent)
+{
+    bool light = luma565(bg) > 150;
+    g_theme.bg = bg;
+    g_theme.accent = accent;
+    if (light) {
+        g_theme.fg = RGB565(20, 20, 24);
+        g_theme.dim = RGB565(120, 115, 105);
+        g_theme.panel = RGB565(228, 222, 208);
+        g_theme.ok = RGB565(20, 130, 70);
+        g_theme.warn = RGB565(200, 30, 30);
+        g_theme.info = RGB565(30, 90, 170);
+    } else {
+        g_theme.fg = 0xFFFF;
+        g_theme.dim = 0x8410;
+        g_theme.panel = 0x2104;
+        g_theme.ok = 0x07E0;
+        g_theme.warn = 0xF800;
+        g_theme.info = 0x07FF;
+    }
+    s_theme_idx = -1;
+    ESP_LOGI(TAG, "自定义主题：bg=0x%04X accent=0x%04X（%s底）", bg, accent, light ? "浅" : "深");
+}
+
+int bsp_theme_current(void)
+{
+    return s_theme_idx;
+}
+
+void bsp_theme_ensure_readable(bool has_background)
+{
+    if (!has_background) {
+        return;
+    }
+    /* 背景图一般是照片/插画，明暗不可控；主文字和次要文字一律用亮色，
+       强调色/状态色保留，主题仍然能看出来 */
+    g_theme.fg = 0xFFFF;
+    g_theme.dim = 0xCE79;
+    ESP_LOGI(TAG, "有背景图：文字强制亮色（主题 %d）", s_theme_idx);
+}
+
+
 /* 字形缓冲上限：16x16 的字放大 2 倍是 32x32，留到 48 够用 */
 #define GLYPH_BUF_MAX 48
 
@@ -503,4 +635,111 @@ void bsp_display_blit(int x, int y, int w, int h, const uint16_t *pixels)
 const uint16_t *bsp_display_framebuffer(void)
 {
     return s_fb;
+}
+
+/* ================================================================ 装饰层 */
+
+static struct {
+    uint8_t border;
+    uint8_t icon;
+    char    tag[16];
+} s_deco = { BSP_DECO_BORDER_NONE, BSP_DECO_ICON_NONE, "" };
+
+void bsp_deco_set(uint8_t border, uint8_t icon, const char *tag)
+{
+    s_deco.border = (border > BSP_DECO_BORDER_DOUBLE) ? BSP_DECO_BORDER_NONE : border;
+    s_deco.icon = (icon > BSP_DECO_ICON_MOON) ? BSP_DECO_ICON_NONE : icon;
+    s_deco.tag[0] = '\0';
+    if (tag) {
+        strlcpy(s_deco.tag, tag, sizeof(s_deco.tag));
+    }
+}
+
+/* 角标小图标：16x16 像素图（1 = 画） */
+static void draw_icon16(int x, int y, int which, uint16_t color)
+{
+    static const uint16_t STAR[16] = {
+        0x0000, 0x0180, 0x0180, 0x03C0, 0x1FF8, 0x0FF0, 0x07E0, 0x0FF0,
+        0x0FF0, 0x1FF8, 0x381C, 0x300C, 0x6006, 0x0000, 0x0000, 0x0000,
+    };
+    static const uint16_t HEART[16] = {
+        0x0000, 0x0C30, 0x1E78, 0x3FFC, 0x3FFC, 0x3FFC, 0x1FF8, 0x0FF0,
+        0x07E0, 0x03C0, 0x0180, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    };
+    static const uint16_t NOTE[16] = {
+        0x0000, 0x0060, 0x0070, 0x0068, 0x0064, 0x0064, 0x0064, 0x00E4,
+        0x01C4, 0x0180, 0x0180, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    };
+    static const uint16_t SAKURA[16] = {
+        0x0000, 0x0180, 0x03C0, 0x0FF0, 0x1FF8, 0x3FFC, 0x3FFC, 0x1FF8,
+        0x0FF0, 0x07E0, 0x0C30, 0x1818, 0x0000, 0x0000, 0x0000, 0x0000,
+    };
+    static const uint16_t MOON[16] = {
+        0x0000, 0x0F80, 0x3E00, 0x7C00, 0x7800, 0xF000, 0xF000, 0xF000,
+        0xF000, 0xF000, 0x7800, 0x7C00, 0x3E00, 0x0F80, 0x0000, 0x0000,
+    };
+    const uint16_t *bm = NULL;
+    switch (which) {
+    case BSP_DECO_ICON_STAR:   bm = STAR;   break;
+    case BSP_DECO_ICON_HEART:  bm = HEART;  break;
+    case BSP_DECO_ICON_NOTE:   bm = NOTE;   break;
+    case BSP_DECO_ICON_SAKURA: bm = SAKURA; break;
+    case BSP_DECO_ICON_MOON:   bm = MOON;   break;
+    default: return;
+    }
+    for (int r = 0; r < 16; r++) {
+        uint16_t row = bm[r];
+        for (int c = 0; c < 16; c++) {
+            if (row & (0x8000 >> c)) {
+                bsp_display_fill_rect(x + c, y + r, 1, 1, color);
+            }
+        }
+    }
+}
+
+void bsp_deco_draw(void)
+{
+    const int W = 240, H = 240;
+
+    /* 边框 */
+    if (s_deco.border == BSP_DECO_BORDER_THIN) {
+        bsp_display_rect(2, 2, W - 4, H - 4, TH_ACCENT);
+    } else if (s_deco.border == BSP_DECO_BORDER_DOUBLE) {
+        bsp_display_rect(2, 2, W - 4, H - 4, TH_ACCENT);
+        bsp_display_rect(5, 5, W - 10, H - 10, TH_ACCENT);
+    } else if (s_deco.border == BSP_DECO_BORDER_ROUND) {
+        /* 圆角：四条直边 + 四个 1/4 圆弧（半径 16，用整数近似圆） */
+        const int r = 16, m = 2;
+        bsp_display_fill_rect(m + r, m, W - 2 * (m + r), 2, TH_ACCENT);
+        bsp_display_fill_rect(m + r, H - m - 2, W - 2 * (m + r), 2, TH_ACCENT);
+        bsp_display_fill_rect(m, m + r, 2, H - 2 * (m + r), TH_ACCENT);
+        bsp_display_fill_rect(W - m - 2, m + r, 2, H - 2 * (m + r), TH_ACCENT);
+        for (int i = 0; i <= r; i++) {
+            /* j = r - sqrt(r² - i²)，用整数牛顿法算整数平方根 */
+            int v = r * r - i * i;
+            int j = r;
+            while (j > 0 && j * j > v) {
+                j--;
+            }
+            j = r - j;
+            if (j < 0) {
+                j = 0;
+            }
+            bsp_display_fill_rect(m + i, m + j, 1, 2, TH_ACCENT);
+            bsp_display_fill_rect(W - m - i - 1, m + j, 1, 2, TH_ACCENT);
+            bsp_display_fill_rect(m + i, H - m - j - 2, 1, 2, TH_ACCENT);
+            bsp_display_fill_rect(W - m - i - 1, H - m - j - 2, 1, 2, TH_ACCENT);
+        }
+    }
+
+    /* 右上角小图标（避开标题栏，从 y=30 开始） */
+    if (s_deco.icon != BSP_DECO_ICON_NONE) {
+        draw_icon16(W - 24, 30, s_deco.icon, TH_ACCENT);
+    }
+
+    /* 左下角文字 */
+    if (s_deco.tag[0]) {
+        int tw = bsp_display_text_width(s_deco.tag, 1);
+        bsp_display_text(W - 8 - tw, H - 22, s_deco.tag, TH_ACCENT, -1, 1);
+    }
 }

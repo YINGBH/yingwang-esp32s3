@@ -213,6 +213,13 @@ static void send_status(void)
     /* 熄屏策略：插电是否也熄屏 / 熄屏后背光（0=全黑，>0=低亮度常显） */
     cJSON_AddNumberToObject(c, "charge_off", cfg.charge_off);
     cJSON_AddNumberToObject(c, "off_bright", cfg.off_bright);
+    /* 主题：-1 = 自定义（用下面两个颜色），0..4 = 内置 */
+    cJSON_AddNumberToObject(c, "theme", cfg.theme_id == 0xFF ? -1 : (int) cfg.theme_id);
+    cJSON_AddNumberToObject(c, "theme_bg", cfg.theme_bg);
+    cJSON_AddNumberToObject(c, "theme_accent", cfg.theme_accent);
+    cJSON_AddNumberToObject(c, "deco_border", cfg.deco_border);
+    cJSON_AddNumberToObject(c, "deco_icon", cfg.deco_icon);
+    cJSON_AddStringToObject(c, "deco_tag", cfg.deco_tag);
     /* 站点参数：门户地址 / AC IP / 校园网 SSID，网页后台用这三项回填输入框 */
     cJSON_AddStringToObject(c, "portal_base", cfg.portal_base);
     cJSON_AddStringToObject(c, "portal_ac", cfg.portal_ac_ip);
@@ -251,6 +258,7 @@ static void do_set(char *kv)
     config_store_snapshot(&cfg);
 
     bool wifi_changed = false;
+    bool theme_changed = false;
     bool known = true;
 
     /* ---- 闹钟 / 按键音（main.c 里的扩展设置）---- */
@@ -384,6 +392,58 @@ static void do_set(char *kv)
         if (v < 0) v = 0;
         if (v > 100) v = 100;
         cfg.off_bright = (uint8_t) v;
+    } else if (strcmp(key, "theme") == 0) {
+        /* 内置主题序号 0..BSP_THEME_COUNT-1；-1 表示自定义（配合 theme_bg/accent） */
+        int v = atoi(val);
+        if (v < 0 || v >= BSP_THEME_COUNT) {
+            reply_err("theme 范围 0..4");
+            return;
+        }
+        cfg.theme_id = (uint8_t) v;
+        bsp_theme_load_preset(v);
+        bsp_theme_ensure_readable(bg_has_image());
+        theme_changed = true;
+    } else if (strcmp(key, "deco_border") == 0 || strcmp(key, "deco_icon") == 0) {
+        /* 边框 0..3，图标 0..5 */
+        int v = atoi(val);
+        if (v < 0) v = 0;
+        if (v > 5) v = 5;
+        if (strcmp(key, "deco_border") == 0) {
+            cfg.deco_border = (uint8_t) v;
+        } else {
+            cfg.deco_icon = (uint8_t) v;
+        }
+        bsp_deco_set(cfg.deco_border, cfg.deco_icon, cfg.deco_tag);
+        theme_changed = true;
+    } else if (strcmp(key, "deco_tag") == 0) {
+        if (strcmp(val, "-") == 0) {
+            cfg.deco_tag[0] = '\0';
+        } else {
+            strlcpy(cfg.deco_tag, val, sizeof(cfg.deco_tag));
+        }
+        bsp_deco_set(cfg.deco_border, cfg.deco_icon, cfg.deco_tag);
+        theme_changed = true;
+    } else if (strcmp(key, "theme_bg") == 0 || strcmp(key, "theme_accent") == 0) {
+        /* 自定义主题：接受 0xRRGGBB（网页的 <input type=color>）或 0xRRRRGGGGBBBB 的 RGB565 */
+        unsigned long raw = strtoul(val, NULL, 0);
+        uint16_t c;
+        if (raw > 0xFFFFul) {
+            int r = (int) ((raw >> 16) & 0xFF);
+            int g = (int) ((raw >> 8) & 0xFF);
+            int b = (int) (raw & 0xFF);
+            c = (uint16_t) ((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3));
+        } else {
+            c = (uint16_t) raw;
+        }
+        if (key[6] == 'b') {
+            cfg.theme_bg = c;
+        } else {
+            cfg.theme_accent = c;
+        }
+        cfg.theme_id = 0xFF;
+        bsp_theme_custom(cfg.theme_bg, cfg.theme_accent);
+        bsp_theme_ensure_readable(bg_has_image());
+        theme_changed = true;
     } else {
         known = false;
     }
@@ -401,7 +461,8 @@ static void do_set(char *kv)
     portal_set_site(cfg.portal_base, cfg.portal_ac_ip, cfg.portal_ssid);
 
     ESP_LOGI(TAG, "串口改配置：%s", key);
-    app_state_request(wifi_changed ? APP_ACT_RECONNECT : APP_ACT_RETRY);
+    app_state_request(theme_changed ? APP_ACT_REDRAW :
+                       (wifi_changed ? APP_ACT_RECONNECT : APP_ACT_RETRY));
     reply_ok();
 }
 

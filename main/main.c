@@ -186,14 +186,14 @@ static char              s_detail[40] = "";
 static const char *state_text(int st, uint16_t *color)
 {
     switch (st) {
-    case ST_BOOT:   *color = COLOR_CYAN;   return "启动";
-    case ST_WIFI:   *color = COLOR_YELLOW; return "连接中";
-    case ST_PROBE:  *color = COLOR_YELLOW; return "检测中";
+    case ST_BOOT:   *color = TH_INFO;   return "启动";
+    case ST_WIFI:   *color = TH_ACCENT; return "连接中";
+    case ST_PROBE:  *color = TH_ACCENT; return "检测中";
     case ST_LOGIN:  *color = COLOR_ORANGE; return "登录中";
-    case ST_ONLINE: *color = COLOR_GREEN;  return "已认证";
-    case ST_NOWIFI: *color = COLOR_RED;    return "未连接";
-    case ST_ERROR:  *color = COLOR_RED;    return "失败";
-    default:        *color = COLOR_GRAY;   return "就绪";
+    case ST_ONLINE: *color = TH_OK;  return "已认证";
+    case ST_NOWIFI: *color = TH_WARN;    return "未连接";
+    case ST_ERROR:  *color = TH_WARN;    return "失败";
+    default:        *color = TH_DIM;   return "就绪";
     }
 }
 
@@ -226,8 +226,8 @@ static void draw_header(const char *title, int state)
 /* 一行「标签  值」 */
 static int draw_row(int y, const char *label, const char *value, uint16_t color)
 {
-    bsp_display_text(8, y, label, COLOR_GRAY, COLOR_BG, 1);
-    bsp_display_text(8 + text_w(label, 1) + 4, y, value, color, COLOR_BG, 1);
+    bsp_display_text(8, y, label, TH_DIM, TH_BG, 1);
+    bsp_display_text(8 + text_w(label, 1) + 4, y, value, color, TH_BG, 1);
     return y + 18;
 }
 
@@ -254,12 +254,12 @@ static void render_status(void)
     const char *st = state_text(s_state, &color);
     char buf[48];
 
-    bsp_display_fill_rect(0, 24, 240, 216, COLOR_BG);
+    bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
 
     /* 顶部色条 + 大号状态字 */
     bsp_display_fill_rect(0, 24, 240, 4, color);
     int w = text_w(st, 2);
-    bsp_display_text((240 - w) / 2, 36, st, color, COLOR_BG, 2);
+    bsp_display_text((240 - w) / 2, 36, st, color, TH_BG, 2);
 
     /* 数据新鲜度：距上次成功拉取有多少秒（0 = 还没有数据）
        放在大状态字下面那一行，一眼看出"现在显示的数据过期多久了" */
@@ -269,36 +269,36 @@ static void render_status(void)
         uint16_t ac;
         if (age <= 0) {
             snprintf(abuf, sizeof(abuf), "数据: 无");
-            ac = COLOR_GRAY;
+            ac = TH_DIM;
         } else {
             snprintf(abuf, sizeof(abuf), "数据: %d 秒前", age);
             /* 1 小时内绿、2 小时内黄、更久红（本来就是每小时拉一次） */
-            ac = age < 3600 ? COLOR_GREEN : (age < 7200 ? COLOR_YELLOW : COLOR_RED);
+            ac = age < 3600 ? TH_OK : (age < 7200 ? TH_ACCENT : TH_WARN);
         }
         int aw = text_w(abuf, 1);
-        bsp_display_text((240 - aw) / 2, 72, abuf, ac, COLOR_BG, 1);
+        bsp_display_text((240 - aw) / 2, 72, abuf, ac, TH_BG, 1);
     }
 
     int y = 96;
     y = draw_row(y, "WiFi", wifi_sta_connected() ? wifi_sta_ssid() : "--",
-                 wifi_sta_connected() ? COLOR_WHITE : COLOR_GRAY);
-    y = draw_row(y, "IP", wifi_sta_connected() ? wifi_sta_ip() : "--", COLOR_WHITE);
+                 wifi_sta_connected() ? TH_FG : TH_DIM);
+    y = draw_row(y, "IP", wifi_sta_connected() ? wifi_sta_ip() : "--", TH_FG);
 
     if (wifi_sta_connected()) {
         int rssi = wifi_sta_rssi();
         snprintf(buf, sizeof(buf), "%d dBm", rssi);
-        uint16_t c = rssi > -60 ? COLOR_GREEN : (rssi > -75 ? COLOR_YELLOW : COLOR_RED);
+        uint16_t c = rssi > -60 ? TH_OK : (rssi > -75 ? TH_ACCENT : TH_WARN);
         y = draw_row(y, "信号", buf, c);
     }
 
     {
         bool chg = bsp_power_is_charging();
         y = draw_row(y, "电源", chg ? "充电中" : "电池供电",
-                     chg ? COLOR_GREEN : COLOR_YELLOW);
+                     chg ? TH_OK : TH_ACCENT);
     }
 
     if (s_detail[0]) {
-        y = draw_row(y, "详情", s_detail, COLOR_CYAN);
+        y = draw_row(y, "详情", s_detail, TH_INFO);
     }
 
     /* 运行时长 + 可用内存：一眼看出板子状态 */
@@ -308,10 +308,10 @@ static void render_status(void)
         int mm2 = (int) ((up_s % 3600) / 60);
         size_t free_int = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
         snprintf(buf, sizeof(buf), "%d小时%d分  内存 %uK", hh, mm2, (unsigned) (free_int / 1024));
-        y = draw_row(y, "运行", buf, COLOR_GRAY);
+        y = draw_row(y, "运行", buf, TH_DIM);
     }
 
-    bsp_display_text(6, 214, "BOOT 重试  连按3次 重新认证", COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text(6, 214, "BOOT 重试  连按3次 重新认证", TH_DIM, TH_BG, 1);
 }
 
 /* ------------------------------------------------------------- 墨水价签页 */
@@ -321,7 +321,7 @@ static void render_status(void)
 static void render_model(void)
 {
     char buf[64];
-    bsp_display_fill_rect(0, 24, 240, 216, COLOR_BG);
+    bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
 
     captcha_model_info_t mi;
     memset(&mi, 0, sizeof(mi));
@@ -330,34 +330,34 @@ static void render_model(void)
 
     int y = 32;
     y = draw_row(y, "状态", mi.ready ? "已加载" : "未加载",
-                 mi.ready ? COLOR_GREEN : COLOR_RED);
+                 mi.ready ? TH_OK : TH_WARN);
     /* 这个模型是给哪所学校训的（app_config.h 里的 APP_SCHOOL） */
-    y = draw_row(y, "学校", APP_SCHOOL, COLOR_WHITE);
+    y = draw_row(y, "学校", APP_SCHOOL, TH_FG);
 
     if (mi.ready) {
         snprintf(buf, sizeof(buf), "ESL1-%06X", (unsigned) (mi.crc & 0xFFFFFFu));
-        y = draw_row(y, "版本", buf, COLOR_CYAN);
+        y = draw_row(y, "版本", buf, TH_INFO);
 
         snprintf(buf, sizeof(buf), "%u K", (unsigned) (mi.params / 1024));
-        y = draw_row(y, "参数", buf, COLOR_WHITE);
+        y = draw_row(y, "参数", buf, TH_FG);
 
         snprintf(buf, sizeof(buf), "%u KB", (unsigned) (mi.bytes / 1024));
-        y = draw_row(y, "大小", buf, COLOR_WHITE);
+        y = draw_row(y, "大小", buf, TH_FG);
 
-        y = draw_row(y, "张量", "8 个（INT16 量化）", COLOR_GRAY);
-        y = draw_row(y, "输入", "62 x 25 x 3", COLOR_GRAY);
-        y = draw_row(y, "输出", "4 位 x 9 类", COLOR_GRAY);
-        y = draw_row(y, "来源", "storage 分区映射", COLOR_GRAY);
+        y = draw_row(y, "张量", "8 个（INT16 量化）", TH_DIM);
+        y = draw_row(y, "输入", "62 x 25 x 3", TH_DIM);
+        y = draw_row(y, "输出", "4 位 x 9 类", TH_DIM);
+        y = draw_row(y, "来源", "storage 分区映射", TH_DIM);
     } else {
-        y = draw_row(y, "提示", "先烧 model_q.bin 到 storage", COLOR_YELLOW);
+        y = draw_row(y, "提示", "先烧 model_q.bin 到 storage", TH_ACCENT);
     }
 
-    bsp_display_text(6, 222, "长按 BOOT 回状态页", COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text(6, 222, "长按 BOOT 回状态页", TH_DIM, TH_BG, 1);
 }
 
 static void render_esl(void)
 {
-    bsp_display_fill_rect(0, 24, 240, 216, COLOR_BG);
+    bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
 
     char st[48];
 
@@ -370,9 +370,9 @@ static void render_esl(void)
         }
         snprintf(st, sizeof(st), "%d 秒后推送", sec);
         int sc_cd = (text_w(st, 2) <= 228) ? 2 : 1;
-        bsp_display_text_center(sc_cd == 2 ? 52 : 60, st, COLOR_YELLOW, COLOR_BG, sc_cd);
-        bsp_display_text_center(96, "先按一下价签唤醒它", COLOR_WHITE, COLOR_BG, 1);
-        bsp_display_text_center(120, "再按 BOOT 取消", COLOR_GRAY, COLOR_BG, 1);
+        bsp_display_text_center(sc_cd == 2 ? 52 : 60, st, TH_ACCENT, TH_BG, sc_cd);
+        bsp_display_text_center(96, "先按一下价签唤醒它", TH_FG, TH_BG, 1);
+        bsp_display_text_center(120, "再按 BOOT 取消", TH_DIM, TH_BG, 1);
 
         /* 倒计时进度条：3 秒走完 */
         int64_t total = 3000;
@@ -380,9 +380,9 @@ static void render_esl(void)
         int w = (int) (done * 196 / total);
         if (w < 0) w = 0;
         if (w > 196) w = 196;
-        bsp_display_fill_rect(22, 150, 196, 14, COLOR_DARK);
+        bsp_display_fill_rect(22, 150, 196, 14, TH_PANEL);
         if (w > 0) {
-            bsp_display_fill_rect(22, 150, w, 14, COLOR_YELLOW);
+            bsp_display_fill_rect(22, 150, w, 14, TH_ACCENT);
         }
         return;
     }
@@ -392,14 +392,14 @@ static void render_esl(void)
         int pct = esl_ble_progress();
         snprintf(st, sizeof(st), "推图中 %d%%", pct);
         int sc_pg = (text_w(st, 2) <= 228) ? 2 : 1;
-        bsp_display_text_center(sc_pg == 2 ? 52 : 60, st, COLOR_CYAN, COLOR_BG, sc_pg);
-        bsp_display_fill_rect(22, 100, 196, 18, COLOR_DARK);
+        bsp_display_text_center(sc_pg == 2 ? 52 : 60, st, TH_INFO, TH_BG, sc_pg);
+        bsp_display_fill_rect(22, 100, 196, 18, TH_PANEL);
         int w = 196 * pct / 100;
         if (w > 0) {
-            bsp_display_fill_rect(22, 100, w, 18, COLOR_GREEN);
+            bsp_display_fill_rect(22, 100, w, 18, TH_OK);
         }
-        bsp_display_text_center(136, esl_ble_status(), COLOR_GRAY, COLOR_BG, 1);
-        bsp_display_text_center(160, "请勿离开价签附近", COLOR_GRAY, COLOR_BG, 1);
+        bsp_display_text_center(136, esl_ble_status(), TH_DIM, TH_BG, 1);
+        bsp_display_text_center(160, "请勿离开价签附近", TH_DIM, TH_BG, 1);
         return;
     }
 
@@ -411,17 +411,17 @@ static void render_esl(void)
         while (sc_idle > 1 && text_w(st, sc_idle) > 228) {
             sc_idle--;
         }
-        bsp_display_text_center(sc_idle == 2 ? 46 : 52, st, COLOR_CYAN, COLOR_BG, sc_idle);
+        bsp_display_text_center(sc_idle == 2 ? 46 : 52, st, TH_INFO, TH_BG, sc_idle);
     }
 
-    bsp_display_text(8, 96, "墨水价签 HINK-E029A14", COLOR_GRAY, COLOR_BG, 1);
-    bsp_display_text(8, 116, "296x128 黑白红三色", COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text(8, 96, "墨水价签 HINK-E029A14", TH_DIM, TH_BG, 1);
+    bsp_display_text(8, 116, "296x128 黑白红三色", TH_DIM, TH_BG, 1);
 
-    bsp_display_text(8, 146, "短按 BOOT 推送信息页", COLOR_WHITE, COLOR_BG, 1);
-    bsp_display_text(8, 166, "长按 BOOT 推送测试卡", COLOR_WHITE, COLOR_BG, 1);
-    bsp_display_text(8, 186, "价签要先关掉手机的连接", COLOR_YELLOW, COLOR_BG, 1);
+    bsp_display_text(8, 146, "短按 BOOT 推送信息页", TH_FG, TH_BG, 1);
+    bsp_display_text(8, 166, "长按 BOOT 推送测试卡", TH_FG, TH_BG, 1);
+    bsp_display_text(8, 186, "价签要先关掉手机的连接", TH_ACCENT, TH_BG, 1);
 
-    bsp_display_text(6, 222, "BOOT 刷新价签  UP/DN 切页", COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text(6, 222, "BOOT 刷新价签  UP/DN 切页", TH_DIM, TH_BG, 1);
 }
 
 /* ---------------------------------------------------------------- 界面二 */
@@ -432,45 +432,45 @@ static void render_info(void)
     time_weather_t tw;
     time_weather_get(&tw);
 
-    bsp_display_fill_rect(0, 24, 240, 216, COLOR_BG);
+    bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
 
     /* 时间：大号 */
     if (tw.time_valid) {
         snprintf(buf, sizeof(buf), "%02d:%02d:%02d", tw.hour, tw.minute, tw.second);
         int w = text_w(buf, 3);
-        bsp_display_text((240 - w) / 2, 30, buf, COLOR_WHITE, COLOR_BG, 3);
+        bsp_display_text((240 - w) / 2, 30, buf, TH_FG, TH_BG, 3);
 
         static const char *wd[] = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
         snprintf(buf, sizeof(buf), "%d月%d日 %s", tw.month, tw.day,
                  (tw.weekday >= 0 && tw.weekday < 7) ? wd[tw.weekday] : "");
-        bsp_display_text_center(82, buf, COLOR_GRAY, COLOR_BG, 1);
+        bsp_display_text_center(82, buf, TH_DIM, TH_BG, 1);
     } else {
-        bsp_display_text_center(48, "对时中", COLOR_YELLOW, COLOR_BG, 2);
+        bsp_display_text_center(48, "对时中", TH_ACCENT, TH_BG, 2);
     }
 
     int y = 106;
     if (tw.weather_valid) {
         snprintf(buf, sizeof(buf), "%s %dC   湿度 %d%%", tw.desc, tw.temp_c, tw.humidity);
-        y = draw_row(y, "天气", buf, COLOR_CYAN);
+        y = draw_row(y, "天气", buf, TH_INFO);
     } else {
-        y = draw_row(y, "天气", tw.fetching ? "获取中" : "无数据", COLOR_GRAY);
+        y = draw_row(y, "天气", tw.fetching ? "获取中" : "无数据", TH_DIM);
     }
 
     if (tw.daily_valid && tw.sunrise[0] != '\0') {
         snprintf(buf, sizeof(buf), "%s  日落 %s", tw.sunrise, tw.sunset);
-        y = draw_row(y, "日出", buf, COLOR_WHITE);
+        y = draw_row(y, "日出", buf, TH_FG);
     } else {
-        y = draw_row(y, "日出", "--", COLOR_GRAY);
+        y = draw_row(y, "日出", "--", TH_DIM);
     }
 
     if (tw.aqi_valid) {
         const char *lvl = tw.quality[0] ? tw.quality
                         : (tw.aqi <= 50 ? "优" : (tw.aqi <= 100 ? "良" : (tw.aqi <= 150 ? "轻度" : "差")));
-        uint16_t ac = tw.aqi <= 50 ? COLOR_GREEN : (tw.aqi <= 100 ? COLOR_YELLOW : COLOR_RED);
+        uint16_t ac = tw.aqi <= 50 ? TH_OK : (tw.aqi <= 100 ? TH_ACCENT : TH_WARN);
         snprintf(buf, sizeof(buf), "%d %s  PM2.5 %d", tw.aqi, lvl, tw.pm25);
         y = draw_row(y, "空气", buf, ac);
     } else {
-        y = draw_row(y, "空气", "--", COLOR_GRAY);
+        y = draw_row(y, "空气", "--", TH_DIM);
     }
 
     {
@@ -480,9 +480,9 @@ static void render_info(void)
                 const char *d0 = tw.fc[i].desc[0] ? tw.fc[i].desc
                                 : time_weather_wmo_text(tw.fc[i].code);
                 snprintf(buf, sizeof(buf), "%s %d/%d", d0, tw.fc[i].tmin, tw.fc[i].tmax);
-                y = draw_row(y, wdays[i], buf, COLOR_WHITE);
+                y = draw_row(y, wdays[i], buf, TH_FG);
             } else {
-                y = draw_row(y, wdays[i], "--", COLOR_GRAY);
+                y = draw_row(y, wdays[i], "--", TH_DIM);
             }
         }
     }
@@ -498,13 +498,13 @@ static void render_info(void)
        以前两块都画在 236，导致下面那行被截掉。 */
     int ms = time_weather_manual_state();
     if (ms == 1) {
-        bsp_display_text(6, 198, "正在更新天气…", COLOR_YELLOW, COLOR_BG, 1);
+        bsp_display_text(6, 198, "正在更新天气…", TH_ACCENT, TH_BG, 1);
     } else if (ms == 2) {
-        bsp_display_text(6, 198, "天气已更新", COLOR_GREEN, COLOR_BG, 1);
+        bsp_display_text(6, 198, "天气已更新", TH_OK, TH_BG, 1);
     } else if (ms == 3) {
-        bsp_display_text(6, 198, "更新失败，稍后再试", COLOR_RED, COLOR_BG, 1);
+        bsp_display_text(6, 198, "更新失败，稍后再试", TH_WARN, TH_BG, 1);
     } else {
-        bsp_display_text(6, 198, "长按 BOOT 更新天气", COLOR_CYAN, COLOR_BG, 1);
+        bsp_display_text(6, 198, "长按 BOOT 更新天气", TH_INFO, TH_BG, 1);
     }
 
     {
@@ -515,15 +515,15 @@ static void render_info(void)
             int mins = age > 0 ? age / 60 : 0;
             snprintf(abuf, sizeof(abuf), "离线 · 数据 %d 分钟前  %s",
                      mins > 0 ? mins : 1, cfg.city);
-            ac = COLOR_YELLOW;
+            ac = TH_ACCENT;
         } else if (age > 0) {
             snprintf(abuf, sizeof(abuf), "数据 %d 秒前  %s", age, cfg.city);
-            ac = age < 3600 ? COLOR_GRAY : (age < 7200 ? COLOR_YELLOW : COLOR_RED);
+            ac = age < 3600 ? TH_DIM : (age < 7200 ? TH_ACCENT : TH_WARN);
         } else {
             snprintf(abuf, sizeof(abuf), "数据 无  %s", cfg.city);
-            ac = COLOR_GRAY;
+            ac = TH_DIM;
         }
-        bsp_display_text(6, 218, abuf, ac, COLOR_BG, 1);
+        bsp_display_text(6, 218, abuf, ac, TH_BG, 1);
     }
 }
 
@@ -537,7 +537,7 @@ static void render_timer(void)
     int64_t now = esp_timer_get_time() / 1000;
     int64_t left;
 
-    bsp_display_fill_rect(0, 24, 240, 216, COLOR_BG);
+    bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
 
     if (s_timer_state == 1) {
         left = s_timer_end_ms - now;
@@ -551,30 +551,30 @@ static void render_timer(void)
     int sec = (int) ((left + 999) / 1000);
     snprintf(buf, sizeof(buf), "%02d:%02d", sec / 60, sec % 60);
 
-    uint16_t c = COLOR_WHITE;
+    uint16_t c = TH_FG;
     if (s_timer_state == 1) {
-        c = (sec <= 10) ? COLOR_RED : COLOR_GREEN;
+        c = (sec <= 10) ? TH_WARN : TH_OK;
     } else if (s_timer_state == 2) {
-        c = COLOR_YELLOW;
+        c = TH_ACCENT;
     } else if (s_timer_state == 3) {
-        c = ((now / 400) % 2) ? COLOR_RED : COLOR_ORANGE;   /* 闪一下 */
+        c = ((now / 400) % 2) ? TH_WARN : COLOR_ORANGE;   /* 闪一下 */
     }
 
     int w = text_w(buf, 4);
-    bsp_display_text((240 - w) / 2, 74, buf, c, COLOR_BG, 4);
+    bsp_display_text((240 - w) / 2, 74, buf, c, TH_BG, 4);
 
     const char *st = (s_timer_state == 0) ? "设置中，BOOT 开始"
                    : (s_timer_state == 1) ? "运行中，BOOT 暂停"
                    : (s_timer_state == 2) ? "已暂停，BOOT 继续"
                    : "时间到！按任意键停止";
-    bsp_display_text_center(148, st, COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text_center(148, st, TH_DIM, TH_BG, 1);
 
     if (s_timer_state == 0) {
         snprintf(buf, sizeof(buf), "%d 分钟", s_timer_min);
-        bsp_display_text_center(176, buf, COLOR_CYAN, COLOR_BG, 1);
+        bsp_display_text_center(176, buf, TH_INFO, TH_BG, 1);
     }
-    bsp_display_text(6, 200, "长按 BOOT 回状态页", COLOR_GRAY, COLOR_BG, 1);
-    bsp_display_text(6, 222, "BOOT 确认   UP/DN 调时·翻页", COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text(6, 200, "长按 BOOT 回状态页", TH_DIM, TH_BG, 1);
+    bsp_display_text(6, 222, "BOOT 确认   UP/DN 调时·翻页", TH_DIM, TH_BG, 1);
 }
 
 /* 秒表页：BOOT 开始/暂停，UP 归零，DN 翻页 */
@@ -583,7 +583,7 @@ static void render_stopwatch(void)
     char buf[32];
     int64_t now = esp_timer_get_time() / 1000;
 
-    bsp_display_fill_rect(0, 24, 240, 216, COLOR_BG);
+    bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
 
     int64_t el = s_sw_base_ms + (s_sw_running ? (now - s_sw_start_ms) : 0);
     int sec = (int) (el / 1000);
@@ -594,35 +594,35 @@ static void render_stopwatch(void)
 
     int w = text_w(buf, 4);
     bsp_display_text((240 - w) / 2, 74, buf,
-                     s_sw_running ? COLOR_GREEN : COLOR_WHITE, COLOR_BG, 4);
+                     s_sw_running ? TH_OK : TH_FG, TH_BG, 4);
 
     bsp_display_text_center(148,
                             s_sw_running ? "运行中，BOOT 暂停" : "已暂停，BOOT 继续",
-                            COLOR_GRAY, COLOR_BG, 1);
+                            TH_DIM, TH_BG, 1);
     if (!s_sw_running && el == 0) {
-        bsp_display_text_center(176, "BOOT 开始", COLOR_CYAN, COLOR_BG, 1);
+        bsp_display_text_center(176, "BOOT 开始", TH_INFO, TH_BG, 1);
     }
-    bsp_display_text(6, 200, "长按 BOOT 回状态页", COLOR_GRAY, COLOR_BG, 1);
-    bsp_display_text(6, 222, "UP 归零   DN 翻页", COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text(6, 200, "长按 BOOT 回状态页", TH_DIM, TH_BG, 1);
+    bsp_display_text(6, 222, "UP 归零   DN 翻页", TH_DIM, TH_BG, 1);
 }
 /* ---------------------------------------------------------- 语音备忘页 */
 static void render_alarm(void)
 {
     static bool blink = false;
     blink = !blink;
-    bsp_display_fill_rect(0, 24, 240, 216, blink ? COLOR_RED : COLOR_BG);
-    uint16_t fg = blink ? COLOR_WHITE : COLOR_RED;
+    bsp_display_fill_rect(0, 24, 240, 216, blink ? TH_WARN : TH_BG);
+    uint16_t fg = blink ? TH_FG : TH_WARN;
 
-    bsp_display_text_center(70, "闹钟", fg, blink ? COLOR_RED : COLOR_BG, 4);
+    bsp_display_text_center(70, "闹钟", fg, blink ? TH_WARN : TH_BG, 4);
     char buf[32];
     time_weather_t tw;
     time_weather_get(&tw);
     if (tw.time_valid) {
         snprintf(buf, sizeof(buf), "%02d:%02d", tw.hour, tw.minute);
         int w = text_w(buf, 3);
-        bsp_display_text((240 - w) / 2, 120, buf, fg, blink ? COLOR_RED : COLOR_BG, 3);
+        bsp_display_text((240 - w) / 2, 120, buf, fg, blink ? TH_WARN : TH_BG, 3);
     }
-    bsp_display_text_center(182, "按任意键停止", fg, blink ? COLOR_RED : COLOR_BG, 1);
+    bsp_display_text_center(182, "按任意键停止", fg, blink ? TH_WARN : TH_BG, 1);
 }
 
 
@@ -675,7 +675,7 @@ static void draw_bell_icon(int x, int y, uint16_t color)
 static void render_alarms(void)
 {
     char buf[48];
-    bsp_display_fill_rect(0, 24, 240, 216, COLOR_BG);
+    bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
 
     time_weather_t tw;
     time_weather_get(&tw);
@@ -690,35 +690,35 @@ static void render_alarms(void)
 
     /* ---------------- 标题行 ---------------- */
     snprintf(buf, sizeof(buf), "闹钟 %d/%d", enabled, ALARM_MAX);
-    bsp_display_text(COL_NUM, 26, buf, COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text(COL_NUM, 26, buf, TH_DIM, TH_BG, 1);
 
     /* 右上角：铃铛图标（有启用的闹钟时高亮，全关时暗） */
     {
         int bx = 232 - 12;
         int by = 25;
-        draw_bell_icon(bx, by, enabled > 0 ? COLOR_YELLOW : COLOR_DARK);
+        draw_bell_icon(bx, by, enabled > 0 ? TH_ACCENT : TH_PANEL);
 
         if (tw.time_valid) {
             snprintf(buf, sizeof(buf), "现在 %02d:%02d", tw.hour, tw.minute);
             int w = text_w(buf, 1);
-            bsp_display_text(bx - 6 - w, 26, buf, COLOR_WHITE, COLOR_BG, 1);
+            bsp_display_text(bx - 6 - w, 26, buf, TH_FG, TH_BG, 1);
         }
     }
 
     /* 标题下的分隔线（2px，规范要求结构线不要细于 2px） */
-    bsp_display_fill_rect(0, 44, 240, 45, COLOR_DARK);
+    bsp_display_fill_rect(0, 44, 240, 45, TH_PANEL);
 
     /* ---------------- 4 个闹钟 ---------------- */
     static const char *WD = "一二三四五六日";
     int y = 52;
     for (int i = 0; i < ALARM_MAX; i++) {
         const alarm_t *a = &s_alarms[i];
-        uint16_t c_num  = a->en ? COLOR_WHITE : COLOR_GRAY;
-        uint16_t c_time = a->en ? COLOR_WHITE : COLOR_GRAY;
+        uint16_t c_num  = a->en ? TH_FG : TH_DIM;
+        uint16_t c_time = a->en ? TH_FG : TH_DIM;
 
         /* ① 序号 */
         snprintf(buf, sizeof(buf), "%d", i + 1);
-        bsp_display_text(COL_NUM, y + 8, buf, c_num, COLOR_BG, 1);
+        bsp_display_text(COL_NUM, y + 8, buf, c_num, TH_BG, 1);
 
         /* ② 时间：2 倍字号，固定列线 */
         if (a->en) {
@@ -726,12 +726,12 @@ static void render_alarms(void)
         } else {
             snprintf(buf, sizeof(buf), "--:--");
         }
-        bsp_display_text(COL_TIME, y, buf, c_time, COLOR_BG, 2);
+        bsp_display_text(COL_TIME, y, buf, c_time, TH_BG, 2);
 
         /* ③ 星期：固定列线，垂直居中（行高 32，1 倍字高 16 → y+8） */
         if (a->en) {
             if (a->mask == 0 || (a->mask & 0x7F) == 0x7F) {
-                bsp_display_text(COL_WD, y + 8, "每天", COLOR_CYAN, COLOR_BG, 1);
+                bsp_display_text(COL_WD, y + 8, "每天", TH_INFO, TH_BG, 1);
             } else {
                 int days[7];
                 int cnt = 0;
@@ -755,19 +755,19 @@ static void render_alarms(void)
                     n += 3;
                 }
                 wd[n] = '\0';
-                bsp_display_text(COL_WD, y + 8, wd, COLOR_CYAN, COLOR_BG, 1);
+                bsp_display_text(COL_WD, y + 8, wd, TH_INFO, TH_BG, 1);
             }
         }
 
         /* ④ 开关：固定列线 */
         bsp_display_text(COL_EN, y + 8, a->en ? "开" : "关",
-                         a->en ? COLOR_GREEN : COLOR_GRAY, COLOR_BG, 1);
+                         a->en ? TH_OK : TH_DIM, TH_BG, 1);
 
         y += 34;
     }
 
     /* ---------------- 分隔线 ---------------- */
-    bsp_display_fill_rect(0, 186, 240, 187, COLOR_DARK);
+    bsp_display_fill_rect(0, 186, 240, 187, TH_PANEL);
 
     /* ---------------- 倒计时（次要重点，用 2 倍字号） ---------------- */
     int64_t now = esp_timer_get_time() / 1000;
@@ -782,31 +782,31 @@ static void render_alarms(void)
             left = 0;
         }
         tst = "运行中";
-        tc = (left <= 10000) ? COLOR_RED : COLOR_GREEN;
+        tc = (left <= 10000) ? TH_WARN : TH_OK;
         break;
     case 2:
         left = s_timer_left_ms;
         tst = "暂停";
-        tc = COLOR_YELLOW;
+        tc = TH_ACCENT;
         break;
     case 3:
         left = 0;
         tst = "到点";
-        tc = COLOR_RED;
+        tc = TH_WARN;
         break;
     default:
         left = (int64_t) s_timer_min * 60000;
         tst = "待机";
-        tc = COLOR_WHITE;
+        tc = TH_FG;
         break;
     }
 
     int sec = (int) ((left + 999) / 1000);
     /* 标签 3 个汉字 = 24px（x=8..32），数字从 x=72 起，中间留 40px 空隙 */
-    bsp_display_text(COL_NUM, 201, "倒计时", COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text(COL_NUM, 201, "倒计时", TH_DIM, TH_BG, 1);
     snprintf(buf, sizeof(buf), "%02d:%02d", sec / 60, sec % 60);
-    bsp_display_text(72, 193, buf, tc, COLOR_BG, 2);
-    bsp_display_text(168, 201, tst, tc, COLOR_BG, 1);
+    bsp_display_text(72, 193, buf, tc, TH_BG, 2);
+    bsp_display_text(168, 201, tst, tc, TH_BG, 1);
 }
 
 
@@ -851,7 +851,7 @@ static uint32_t fw_size_kb(void)
 static void render_sys(void)
 {
     char buf[64];
-    bsp_display_fill_rect(0, 24, 240, 216, COLOR_BG);
+    bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
 
     app_settings_t cfg;
     config_store_snapshot(&cfg);
@@ -870,27 +870,27 @@ static void render_sys(void)
 
     int y = 28;
     snprintf(buf, sizeof(buf), "v%s 正式版", desc ? desc->version : "?");
-    y = draw_row(y, "固件", buf, COLOR_GREEN);
+    y = draw_row(y, "固件", buf, TH_OK);
 
     snprintf(buf, sizeof(buf), "%.11s %s", desc ? desc->date : "--", FW_AUTHOR);
-    y = draw_row(y, "编译", buf, COLOR_GRAY);
+    y = draw_row(y, "编译", buf, TH_DIM);
 
     fmt_duration(app_state_uptime_s(), buf, sizeof(buf));
-    y = draw_row(y, "运行", buf, COLOR_CYAN);
+    y = draw_row(y, "运行", buf, TH_INFO);
 
     size_t heap_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     size_t heap_min = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
     snprintf(buf, sizeof(buf), "%uK 低%uK",
              (unsigned) (heap_free / 1024), (unsigned) (heap_min / 1024));
-    y = draw_row(y, "内存", buf, heap_min < 20 * 1024 ? COLOR_RED : COLOR_GREEN);
+    y = draw_row(y, "内存", buf, heap_min < 20 * 1024 ? TH_WARN : TH_OK);
 
     if (run && fw_kb) {
         snprintf(buf, sizeof(buf), "%uK/%uM %u%%", (unsigned) fw_kb,
                  (unsigned) (run->size / (1024 * 1024)),
                  (unsigned) (fw_kb * 1024 * 100 / run->size));
-        y = draw_row(y, "固件占用", buf, COLOR_WHITE);
+        y = draw_row(y, "固件占用", buf, TH_FG);
     } else {
-        y = draw_row(y, "固件占用", "--", COLOR_GRAY);
+        y = draw_row(y, "固件占用", "--", TH_DIM);
     }
 
 
@@ -898,30 +898,30 @@ static void render_sys(void)
     size_t msz = captcha_model_size();
     if (msz > 0) {
         snprintf(buf, sizeof(buf), "%uK 已加载", (unsigned) (msz / 1024));
-        y = draw_row(y, "模型", buf, COLOR_GREEN);
+        y = draw_row(y, "模型", buf, TH_OK);
     } else {
-        y = draw_row(y, "模型", "未烧录", COLOR_RED);
+        y = draw_row(y, "模型", "未烧录", TH_WARN);
     }
 
     y = draw_row(y, "WiFi", wifi_sta_connected() ? wifi_sta_ssid() : "--",
-                 wifi_sta_connected() ? COLOR_WHITE : COLOR_GRAY);
-    y = draw_row(y, "IP", wifi_sta_connected() ? wifi_sta_ip() : "--", COLOR_WHITE);
+                 wifi_sta_connected() ? TH_FG : TH_DIM);
+    y = draw_row(y, "IP", wifi_sta_connected() ? wifi_sta_ip() : "--", TH_FG);
 
     if (wifi_sta_connected()) {
         int rssi = wifi_sta_rssi();
         snprintf(buf, sizeof(buf), "%d dBm", rssi);
         y = draw_row(y, "信号", buf,
-                     rssi > -60 ? COLOR_GREEN : (rssi > -75 ? COLOR_YELLOW : COLOR_RED));
+                     rssi > -60 ? TH_OK : (rssi > -75 ? TH_ACCENT : TH_WARN));
     } else {
-        y = draw_row(y, "信号", "--", COLOR_GRAY);
+        y = draw_row(y, "信号", "--", TH_DIM);
     }
 
-    y = draw_row(y, "账号", cfg.user[0] ? cfg.user : "未配置", COLOR_WHITE);
+    y = draw_row(y, "账号", cfg.user[0] ? cfg.user : "未配置", TH_FG);
 
     /* 底部：复位原因 + 提示 */
     snprintf(buf, sizeof(buf), "%s", reset_text(esp_reset_reason()));
-    bsp_display_text(6, 216, buf, COLOR_GRAY, COLOR_BG, 1);
-    bsp_display_text(150, 216, "BOOT 重试", COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text(6, 216, buf, TH_DIM, TH_BG, 1);
+    bsp_display_text(150, 216, "BOOT 重试", TH_DIM, TH_BG, 1);
 }
 
 /* UTF-8 字符字节数（只处理 1/2/3/4 字节常见情况） */
@@ -979,15 +979,15 @@ static int utf8_chunk(const char *s, int cols, char out[][64], int max_chunk)
 
 static void render_diag(void)
 {
-    bsp_display_fill_rect(0, 24, 240, 216, COLOR_BG);
+    bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
 
     /* ---------- 标题栏 ---------- */
-    bsp_display_fill_rect(0, 24, 240, 20, COLOR_DARK);
-    bsp_display_text(8, 27, "板载日志", COLOR_WHITE, COLOR_DARK, 1);
-    uint16_t stc = COLOR_WHITE;
+    bsp_display_fill_rect(0, 24, 240, 20, TH_PANEL);
+    bsp_display_text(8, 27, "板载日志", TH_FG, TH_PANEL, 1);
+    uint16_t stc = TH_FG;
     const char *st = state_text(s_state, &stc);
     int sw = bsp_display_text_width(st, 1);
-    bsp_display_text(232 - sw, 27, st, stc, COLOR_DARK, 1);
+    bsp_display_text(232 - sw, 27, st, stc, TH_PANEL, 1);
 
     /* ---------- 日志面板 ---------- */
     const int panel_y = 46;
@@ -1033,8 +1033,8 @@ static void render_diag(void)
             s++;
         }
         char lv = (*s == 'E' || *s == 'W' || *s == 'I') ? *s : 'I';
-        uint16_t chip = (lv == 'E') ? COLOR_RED
-                      : (lv == 'W') ? COLOR_YELLOW : COLOR_GREEN;
+        uint16_t chip = (lv == 'E') ? TH_WARN
+                      : (lv == 'W') ? TH_ACCENT : TH_OK;
 
         /* 去掉 "I (12345) " 前缀 */
         const char *msg = s;
@@ -1080,7 +1080,7 @@ static void render_diag(void)
 
         /* 颜色：越旧越暗 */
         int age = cnt - 1 - i;
-        uint16_t fg = (age == 0) ? COLOR_WHITE
+        uint16_t fg = (age == 0) ? TH_FG
                     : (age <= 2) ? 0xCE79
                     : (age <= 4) ? 0x8C71 : 0x630C;
 
@@ -1102,7 +1102,7 @@ static void render_diag(void)
     }
 
     if (cnt == 0) {
-        bsp_display_text(10, panel_y + 8, "暂无日志", COLOR_GRAY, 0x0841, 1);
+        bsp_display_text(10, panel_y + 8, "暂无日志", TH_DIM, 0x0841, 1);
     }
 
     /* ---------- 底部：内存 ---------- */
@@ -1111,7 +1111,7 @@ static void render_diag(void)
     char foot[48];
     snprintf(foot, sizeof(foot), "内存 %uK  最大块 %uK",
              (unsigned) (free_int / 1024), (unsigned) (big_int / 1024));
-    bsp_display_text(8, 214, foot, big_int > 20000 ? 0x5AEB : COLOR_YELLOW, COLOR_BG, 1);
+    bsp_display_text(8, 214, foot, big_int > 20000 ? 0x5AEB : TH_ACCENT, TH_BG, 1);
 }
 
 
@@ -1128,7 +1128,7 @@ static void draw_weather_icon(int ox, int oy, int code)
 
     for (int y = 0; y < S; y++) {
         for (int x = 0; x < S; x++) {
-            uint16_t c = COLOR_BG;
+            uint16_t c = TH_BG;
             if (sun) {
                 int dx = x - 12, dy = y - 12;
                 if (dx * dx + dy * dy <= 36) c = SUN;
@@ -1168,7 +1168,7 @@ static void render_clock(void)
             bg_draw();
             bg_drawn = true;
         } else {
-            bsp_display_fill_rect(0, 0, 240, 240, COLOR_BG);
+            bsp_display_fill_rect(0, 0, 240, 240, TH_BG);
         }
         s_clock_full = false;
         s_clock_minute = -1;
@@ -1176,7 +1176,7 @@ static void render_clock(void)
     }
 
     int second_of_day = tw.time_valid ? (tw.hour * 3600 + tw.minute * 60 + tw.second) : -2;
-    uint16_t bg_color = has_bg ? COLOR_BLACK : COLOR_BG;
+    uint16_t bg_color = has_bg ? COLOR_BLACK : TH_BG;
 
     if (tw.time_valid && second_of_day == s_clock_second) {
         return;                                     /* 时间没变，什么都不用重画 */
@@ -1203,7 +1203,7 @@ static void render_clock(void)
             /* 透明底 + 1px 黑色描边：压在亮背景上也看得清 */
             bsp_display_text(tx + 2, ty + 2, buf, COLOR_BLACK, -1, 3);
         }
-        bsp_display_text(tx, ty, buf, COLOR_WHITE, text_bg, 3);
+        bsp_display_text(tx, ty, buf, TH_FG, text_bg, 3);
 
         static const char *wd[] = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
         const char *day = (tw.weekday >= 0 && tw.weekday < 7) ? wd[tw.weekday] : "";
@@ -1226,9 +1226,9 @@ static void render_clock(void)
             int dw = text_w(buf, 1);
             bsp_display_text((240 - dw) / 2 + 1, bar_y + 57, buf, COLOR_BLACK, -1, 1);
         }
-        bsp_display_text_center(bar_y + (has_bg ? 56 : 62), buf, COLOR_GRAY, text_bg, 1);
+        bsp_display_text_center(bar_y + (has_bg ? 56 : 62), buf, TH_DIM, text_bg, 1);
     } else {
-        bsp_display_text_center(bar_y + 20, "对时中", COLOR_YELLOW, text_bg, 2);
+        bsp_display_text_center(bar_y + 20, "对时中", TH_ACCENT, text_bg, 2);
     }
 
     /* 顶部 4 像素细条显示门户认证状态：绿=已认证 黄=登录中 红=失败 灰=未连接 */
@@ -1244,11 +1244,11 @@ static void render_clock(void)
         if (has_bg) {
             bsp_display_text(6 + 26 + 1, 22 + 1, buf, COLOR_BLACK, -1, 1);
         }
-        bsp_display_text(6 + 26, 22, buf, COLOR_WHITE, has_bg ? -1 : COLOR_BLACK, 1);
+        bsp_display_text(6 + 26, 22, buf, TH_FG, has_bg ? -1 : COLOR_BLACK, 1);
     }
 
     if (!has_bg) {
-        bsp_display_text_center(164, "网页上传图片可换背景", COLOR_GRAY, bg_color, 1);
+        bsp_display_text_center(164, "网页上传图片可换背景", TH_DIM, bg_color, 1);
     }
 
 }
@@ -1265,8 +1265,8 @@ static void render_calendar(void)
     time_weather_get(&tw);
 
     if (!tw.time_valid || tw.year < 2024) {
-        bsp_display_fill_rect(0, 24, 240, 216, COLOR_BG);
-        bsp_display_text_center(110, "对时后显示日历", COLOR_YELLOW, COLOR_BG, 1);
+        bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+        bsp_display_text_center(110, "对时后显示日历", TH_ACCENT, TH_BG, 1);
         return;
     }
 
@@ -1279,7 +1279,7 @@ static void render_calendar(void)
 
     char buf[64];
 
-    bsp_display_fill_rect(0, 24, 240, 216, COLOR_BG);
+    bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
 
     /* 月份标题 + 农历月份 */
     lunar_date_t ld;
@@ -1290,7 +1290,7 @@ static void render_calendar(void)
     } else {
         snprintf(buf, sizeof(buf), "%d年%d月", tw.year, tw.month);
     }
-    bsp_display_text_center(30, buf, COLOR_WHITE, COLOR_BG, 1);
+    bsp_display_text_center(30, buf, TH_FG, TH_BG, 1);
 
     /* 星期表头 */
     static const char *wd[] = {"日", "一", "二", "三", "四", "五", "六"};
@@ -1298,7 +1298,7 @@ static void render_calendar(void)
 
     for (int i = 0; i < 7; i++) {
         int cx = x0 + i * cell_w + (cell_w - 16) / 2;
-        bsp_display_text(cx, 52, wd[i], COLOR_GRAY, COLOR_BG, 1);
+        bsp_display_text(cx, 52, wd[i], TH_DIM, TH_BG, 1);
     }
 
     app_settings_t cal_cfg;
@@ -1319,13 +1319,13 @@ static void render_calendar(void)
         cal_day_t cd;
         cal_lookup(tw.year, tw.month, d, &cd);
 
-        uint16_t fg = COLOR_WHITE;
+        uint16_t fg = TH_FG;
         if (cd.flags & CAL_FLAG_OFF) {
-            fg = COLOR_RED;                 /* 法定放假 */
+            fg = TH_WARN;                 /* 法定放假 */
         } else if (cd.flags & CAL_FLAG_WORK) {
             fg = COLOR_ORANGE;              /* 调休上班 */
         } else if (cd.flags & CAL_FLAG_TRAD) {
-            fg = COLOR_CYAN;                /* 传统节日 */
+            fg = TH_INFO;                /* 传统节日 */
         }
 
         snprintf(buf, sizeof(buf), "%d", d);
@@ -1334,18 +1334,18 @@ static void render_calendar(void)
         bool this_bday = bday_set && (tw.month == cal_bm && d == cal_bd);
         if (this_bday && d != tw.day) {
             /* 生日那天：红字 + 下面一个小红点 */
-            bsp_display_text(cx + (cell_w - w) / 2, cy + 3, buf, COLOR_RED, COLOR_BG, 1);
+            bsp_display_text(cx + (cell_w - w) / 2, cy + 3, buf, TH_WARN, TH_BG, 1);
             int dotx = cx + cell_w / 2 - 2;
-            bsp_display_fill_rect(dotx, cy + row_h - 6, 4, 3, COLOR_RED);
+            bsp_display_fill_rect(dotx, cy + row_h - 6, 4, 3, TH_WARN);
             continue;
         }
 
         if (d == tw.day) {
-            bsp_display_fill_rect(cx + 2, cy, cell_w - 4, row_h - 2, COLOR_CYAN);
+            bsp_display_fill_rect(cx + 2, cy, cell_w - 4, row_h - 2, TH_INFO);
             bsp_display_text(cx + (cell_w - w) / 2, cy + 3, buf,
-                             COLOR_BLACK, COLOR_CYAN, 1);
+                             COLOR_BLACK, TH_INFO, 1);
         } else {
-            bsp_display_text(cx + (cell_w - w) / 2, cy + 3, buf, fg, COLOR_BG, 1);
+            bsp_display_text(cx + (cell_w - w) / 2, cy + 3, buf, fg, TH_BG, 1);
         }
     }
 
@@ -1359,18 +1359,18 @@ static void render_calendar(void)
 
     const char *term = solar_term_of(tw.year, tw.month, tw.day);
     if (is_bday) {
-        bsp_display_text(8, 202, "今天 生日快乐！", COLOR_RED, COLOR_BG, 1);
+        bsp_display_text(8, 202, "今天 生日快乐！", TH_WARN, TH_BG, 1);
     } else if (today.name != NULL) {
         snprintf(buf, sizeof(buf), "今天 %s", today.name);
-        bsp_display_text(8, 202, buf, COLOR_YELLOW, COLOR_BG, 1);
+        bsp_display_text(8, 202, buf, TH_ACCENT, TH_BG, 1);
     } else if (term != NULL) {
         snprintf(buf, sizeof(buf), "今天 %s", term);
-        bsp_display_text(8, 202, buf, COLOR_CYAN, COLOR_BG, 1);
+        bsp_display_text(8, 202, buf, TH_INFO, TH_BG, 1);
     } else if (ld.valid) {
         snprintf(buf, sizeof(buf), "今天 农历%s", lunar_day_name(ld.day));
-        bsp_display_text(8, 202, buf, COLOR_GRAY, COLOR_BG, 1);
+        bsp_display_text(8, 202, buf, TH_DIM, TH_BG, 1);
     } else {
-        bsp_display_text(8, 202, "今天", COLOR_GRAY, COLOR_BG, 1);
+        bsp_display_text(8, 202, "今天", TH_DIM, TH_BG, 1);
     }
 
     /* 生日倒计时（60 天内优先显示），否则显示下一个假期 */
@@ -1391,10 +1391,10 @@ static void render_calendar(void)
     }
 
     if (is_bday) {
-        bsp_display_text(8, 220, "生日快乐，今天你是主角", COLOR_GRAY, COLOR_BG, 1);
+        bsp_display_text(8, 220, "生日快乐，今天你是主角", TH_DIM, TH_BG, 1);
     } else if (bdays >= 0 && bdays <= 60) {
         snprintf(buf, sizeof(buf), "距生日 %d/%d 还有 %d 天", bm, bd, bdays);
-        bsp_display_text(8, 220, buf, COLOR_CYAN, COLOR_BG, 1);
+        bsp_display_text(8, 220, buf, TH_INFO, TH_BG, 1);
     } else {
         int ahead = 0;
         const char *hname = NULL;
@@ -1404,7 +1404,7 @@ static void render_calendar(void)
             } else {
                 snprintf(buf, sizeof(buf), "距%s %d 天", hname, ahead);
             }
-            bsp_display_text(8, 220, buf, COLOR_GRAY, COLOR_BG, 1);
+            bsp_display_text(8, 220, buf, TH_DIM, TH_BG, 1);
         }
     }
 }
@@ -1415,9 +1415,9 @@ static void render_captcha(const portal_captcha_t *cap)
 {
     char buf[64];
 
-    bsp_display_clear(COLOR_BG);
-    bsp_display_fill_rect(0, 0, 240, 24, COLOR_YELLOW);
-    bsp_display_text(6, 4, "验证码", COLOR_BLACK, COLOR_YELLOW, 1);
+    bsp_display_clear(TH_BG);
+    bsp_display_fill_rect(0, 0, 240, 24, TH_ACCENT);
+    bsp_display_text(6, 4, "验证码", COLOR_BLACK, TH_ACCENT, 1);
 
     /* 62x25 放大 3 倍 = 186x75，居中 */
     int scale = 3;
@@ -1426,14 +1426,14 @@ static void render_captcha(const portal_captcha_t *cap)
     int x = (240 - w) / 2;
     int y = 44;
 
-    bsp_display_fill_rect(x - 4, y - 4, w + 8, h + 8, COLOR_WHITE);
+    bsp_display_fill_rect(x - 4, y - 4, w + 8, h + 8, TH_FG);
     bsp_display_image(x, y, cap->w, cap->h, cap->rgb, scale, false);
 
     snprintf(buf, sizeof(buf), "识别为 %s", cap->code);
-    bsp_display_text(8, y + h + 24, buf, COLOR_WHITE, COLOR_BG, 2);
+    bsp_display_text(8, y + h + 24, buf, TH_FG, TH_BG, 2);
 
-    bsp_display_text(8, y + h + 60, "识别错了就按 BOOT", COLOR_GRAY, COLOR_BG, 1);
-    bsp_display_text(8, 210, "3 秒后自动提交", COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text(8, y + h + 60, "识别错了就按 BOOT", TH_DIM, TH_BG, 1);
+    bsp_display_text(8, 210, "3 秒后自动提交", TH_DIM, TH_BG, 1);
 }
 
 /* 验证码回调：显示 + 给用户 3 秒反悔时间 */
@@ -1470,26 +1470,26 @@ static void render_diag_test(void)
     bsp_display_fill_rect(0, 0, 240, 240, COLOR_BLACK);
 
     /* 1) 四个纯色方块：验证颜色映射 */
-    bsp_display_fill_rect(10, 8, 52, 52, COLOR_RED);
-    bsp_display_fill_rect(70, 8, 52, 52, COLOR_GREEN);
+    bsp_display_fill_rect(10, 8, 52, 52, TH_WARN);
+    bsp_display_fill_rect(70, 8, 52, 52, TH_OK);
     bsp_display_fill_rect(130, 8, 52, 52, COLOR_BLUE);
-    bsp_display_fill_rect(190, 8, 52, 52, COLOR_WHITE);
+    bsp_display_fill_rect(190, 8, 52, 52, TH_FG);
 
     /* 2) 超大字符：验证字形 */
-    bsp_display_text(10, 70, "风", COLOR_WHITE, COLOR_BLACK, 3);
-    bsp_display_text(70, 70, "电", COLOR_WHITE, COLOR_BLACK, 3);
-    bsp_display_text(130, 70, "A", COLOR_WHITE, COLOR_BLACK, 3);
-    bsp_display_text(170, 70, "1", COLOR_WHITE, COLOR_BLACK, 3);
+    bsp_display_text(10, 70, "风", TH_FG, COLOR_BLACK, 3);
+    bsp_display_text(70, 70, "电", TH_FG, COLOR_BLACK, 3);
+    bsp_display_text(130, 70, "A", TH_FG, COLOR_BLACK, 3);
+    bsp_display_text(170, 70, "1", TH_FG, COLOR_BLACK, 3);
 
     /* 3) 普通字号的整行文字 */
-    bsp_display_text(6, 126, "ABC abc 123 45%", COLOR_WHITE, COLOR_BLACK, 1);
-    bsp_display_text(6, 148, "中文测试风扇灯", COLOR_CYAN, COLOR_BLACK, 1);
-    bsp_display_text(6, 170, "开关亮度定时", COLOR_YELLOW, COLOR_BLACK, 1);
+    bsp_display_text(6, 126, "ABC abc 123 45%", TH_FG, COLOR_BLACK, 1);
+    bsp_display_text(6, 148, "中文测试风扇灯", TH_INFO, COLOR_BLACK, 1);
+    bsp_display_text(6, 170, "开关亮度定时", TH_ACCENT, COLOR_BLACK, 1);
 
     /* 4) 边框 */
-    bsp_display_rect(4, 120, 232, 74, COLOR_GRAY);
+    bsp_display_rect(4, 120, 232, 74, TH_DIM);
 
-    bsp_display_text(6, 212, "DIAG-2", COLOR_GRAY, COLOR_BLACK, 1);
+    bsp_display_text(6, 212, "DIAG-2", TH_DIM, COLOR_BLACK, 1);
 
     extern volatile uint32_t g_flush_ok, g_flush_timeout;
     static int64_t last_log;
@@ -1514,14 +1514,14 @@ static void ble_idle_release(void);
 static void draw_boot_logo(void)
 {
     const esp_app_desc_t *ad = esp_app_get_description();
-    bsp_display_clear(COLOR_BG);
-    bsp_display_fill_rect(0, 0, 240, 4, COLOR_CYAN);
+    bsp_display_clear(TH_BG);
+    bsp_display_fill_rect(0, 0, 240, 4, TH_INFO);
     int lw = text_w("YING", 5);
-    bsp_display_text((240 - lw) / 2, 76, "YING", COLOR_CYAN, COLOR_BG, 5);
+    bsp_display_text((240 - lw) / 2, 76, "YING", TH_INFO, TH_BG, 5);
     char line[48];
     snprintf(line, sizeof(line), "YingWang v%s", ad ? ad->version : "?");
-    bsp_display_text_center(140, line, COLOR_GRAY, COLOR_BG, 1);
-    bsp_display_text_center(160, "by YING", COLOR_GRAY, COLOR_BG, 1);
+    bsp_display_text_center(140, line, TH_DIM, TH_BG, 1);
+    bsp_display_text_center(160, "by YING", TH_DIM, TH_BG, 1);
     bsp_display_flush();
 }
 
@@ -1700,7 +1700,7 @@ static void ui_task(void *arg)
             bsp_display_clear(COLOR_BLACK);
             bsp_display_flush();
             vTaskDelay(pdMS_TO_TICKS(120));
-            bsp_display_clear(COLOR_WHITE);
+            bsp_display_clear(TH_FG);
             bsp_display_flush();
             vTaskDelay(pdMS_TO_TICKS(120));
             s_force_redraw = true;      /* 下一轮把当前页整页重画 */
@@ -1767,7 +1767,7 @@ static void ui_task(void *arg)
 #endif
 
         if (sc != last_screen) {
-            bsp_display_clear(COLOR_BG);
+            bsp_display_clear(TH_BG);
             s_clock_full = true;      /* 时钟屏整屏重画一次 */
             s_cal_day = -1;           /* 日历屏也重画 */
             last_screen = sc;
@@ -1827,6 +1827,7 @@ static void ui_task(void *arg)
             break;
         }
 
+        bsp_deco_draw();          /* 边框 / 角标图标 / 角标文字（可关） */
         bsp_display_flush();
 
         /* 倒计时/秒表要走到秒、时钟要跟手，其余页面可以慢一点；
@@ -3139,6 +3140,16 @@ void app_main(void)
 
     /* 站点参数交给门户组件：门户地址 / AC IP / 校园网 SSID 都能在网页或串口里改 */
     portal_set_site(cfg.portal_base, cfg.portal_ac_ip, cfg.portal_ssid);
+    /* 主题：0..4 用内置，0xFF 用自定义（bg + accent） */
+    if (cfg.theme_id == 0xFF) {
+        bsp_theme_custom(cfg.theme_bg, cfg.theme_accent);
+    } else if (cfg.theme_id < BSP_THEME_COUNT) {
+        bsp_theme_load_preset(cfg.theme_id);
+    } else {
+        bsp_theme_load_preset(0);
+    }
+    bsp_theme_ensure_readable(bg_has_image());
+    bsp_deco_set(cfg.deco_border, cfg.deco_icon, cfg.deco_tag);
 
     usb_console_init();                      /* USB 串口网页（Web Serial）命令行 */
     stats_init();
