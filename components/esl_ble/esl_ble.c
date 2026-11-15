@@ -1,4 +1,4 @@
-﻿/*
+/*
  * ESP32-S3 用 BLE 驱动盒马墨水价签（HINK-E029A14-A1 / 296x128 / 黑白红）
  *
  * 信息页排版（与电脑端 esl_page_v3.py 一致）：
@@ -770,6 +770,61 @@ void esl_ble_draw_test_pattern(void)
     text("ESL TEST PAGE", 84, 96, INK_BLACK);
 }
 
+/* ---------------- 墨水屏界面自定义 ---------------- */
+#define ESL_OPT_CAL     0x01   /* 日历 */
+#define ESL_OPT_WEATHER 0x02   /* 天气面板 */
+#define ESL_OPT_SUN     0x04   /* 日出日落 */
+#define ESL_OPT_BRAND   0x08   /* 品牌 / 版本号 */
+
+static uint8_t s_layout = 0;          /* 0 标准（日历+天气） 1 大字时间 */
+static uint8_t s_opts = 0x0F;         /* 默认全开 */
+static char    s_custom[24] = "";     /* 自定义一行字 */
+
+void esl_ble_set_ui(uint8_t layout, uint8_t opts, const char *text)
+{
+    s_layout = (layout > 1) ? 0 : layout;
+    s_opts = opts;
+    s_custom[0] = '\0';
+    if (text) {
+        snprintf(s_custom, sizeof(s_custom), "%s", text);
+    }
+    ESP_LOGI(TAG, "墨水屏界面：布局 %d，开关 0x%02X，自定义「%s」", s_layout, s_opts, s_custom);
+}
+
+uint8_t esl_ble_ui_layout(void)
+{
+    return s_layout;
+}
+
+uint8_t esl_ble_ui_opts(void)
+{
+    return s_opts;
+}
+
+const char *esl_ble_ui_text(void)
+{
+    return s_custom;
+}
+
+/* 大字时间（16px 字模放大 2 倍） */
+static void draw_big_time(int y)
+{
+    time_weather_t tw;
+    memset(&tw, 0, sizeof(tw));
+    time_weather_get(&tw);
+    char tb[8];
+    if (tw.time_valid) {
+        snprintf(tb, sizeof(tb), "%02d:%02d", tw.hour, tw.minute);
+    } else {
+        snprintf(tb, sizeof(tb), "--:--");
+    }
+    int w = 0;
+    for (const char *p = tb; *p; p++) {
+        w += 16;                     /* 放大 2 倍后 ASCII 16px 宽 */
+    }
+    text_big(tb, (ESL_W - w) / 2, y, INK_BLACK, 2);
+}
+
 static void draw_info(void)
 {
     buf_clear();
@@ -817,8 +872,8 @@ static void draw_info(void)
     /* 和电池之间留 28px：原来 12px 时第三个字会被电池压住 */
     x -= 24 + 28;
 
-    /* 电池左边：品牌「百合社」 */
-    {
+    /* 电池左边：品牌「百合社」（可关） */
+    if (s_opts & ESL_OPT_BRAND) {
         const char *BRAND = "\u767e\u5408\u793e";
         int bw = text_w(BRAND);
         text(BRAND, x - bw, 0, INK_BLACK);
@@ -867,8 +922,31 @@ static void draw_info(void)
         text(buf, 6, bar_y0 + 2, INK_WHITE);
     }
 
+    /* 大字时间布局：时间顶替日历区 */
+    if (s_layout == 1) {
+        draw_big_time(44);
+        if (s_custom[0]) {
+            int cw = text12_w(s_custom);
+            text12(s_custom, (ESL_W - cw) / 2, 84, INK_BLACK);
+        }
+        if (s_opts & ESL_OPT_WEATHER) {
+            if ((s_opts & ESL_OPT_WEATHER) && tw.weather_valid) {
+                snprintf(buf, sizeof(buf), "%dC HUM %d", tw.temp_c, tw.humidity);
+                int w = text12_w(buf);
+                text12(buf, (ESL_W - w) / 2, 102, INK_BLACK);
+            }
+        }
+        if ((s_opts & ESL_OPT_SUN) && tw.daily_valid && tw.sunrise[0]) {
+            snprintf(buf, sizeof(buf), "日出%s 日落%s", tw.sunrise, tw.sunset);
+            int w = text12_w(buf);
+            text12(buf, (ESL_W - w) / 2, 116, INK_BLACK);
+        }
+        return;
+    }
+
     /* ---------------- 日历 ---------------- */
     const int cal_x = 2, col_w = 24, y0 = 42;
+    if (s_opts & ESL_OPT_CAL) {
 
     static const char *WD_AB[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
     for (int i = 0; i < 7; i++) {
@@ -914,6 +992,8 @@ static void draw_info(void)
                 }
             }
         }
+    }
+
     }
 
     /* ---------------- 右下角天气面板 ----------------
@@ -982,9 +1062,10 @@ static void draw_info(void)
                 put_px(x, py0 + 64, false);
             }
 
-            /* 日出 / 日落：一行横排（"日出7:09 日落17:18"）。
+            /* 日出 / 日落：一行横排（可用 SET esl_opts 关掉）
                12px 字库里 ASCII 是 8px 宽，两个"日X小时:分"正好 120px，
                面板 124px 放得下；万一放不下（时间带前导 0 等）自动换成单字标签 */
+            if (s_opts & ESL_OPT_SUN) {
             {
                 char s1[24], s2[24];
                 int sh = 0, sm = 0, eh = 0, em = 0;
@@ -1028,6 +1109,7 @@ static void draw_info(void)
                 }
                 text12(s1, x1, py0 + 70, INK_BLACK);
                 text12(s2, x1 + w1 + 2, py0 + 70, INK_BLACK);
+            }
             }
         } else {
             /* 没天气数据：面板中间写一行提示，不画框（框看起来像乱码） */

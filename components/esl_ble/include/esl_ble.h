@@ -1,10 +1,11 @@
-/*
+﻿/*
  * ESP32-S3 当 BLE 主设备，驱动盒马墨水价签（HINK-E029A14-A1, 296x128, 三色）
  */
 #ifndef ESL_BLE_H
 #define ESL_BLE_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -60,3 +61,8 @@ void esl_ble_release(void);
 #endif
 
 #endif
+/** 墨水屏界面自定义：布局 0 标准 / 1 大字时间；opts 见 ESL_OPT_* */
+void esl_ble_set_ui(uint8_t layout, uint8_t opts, const char *text);
+uint8_t esl_ble_ui_layout(void);
+uint8_t esl_ble_ui_opts(void);
+const char *esl_ble_ui_text(void);

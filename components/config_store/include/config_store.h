@@ -67,6 +67,14 @@ typedef struct {
     uint8_t  theme_day;       /* 白天主题序号 */
     uint8_t  theme_night;     /* 夜里主题序号 */
     uint8_t  bg_rotate;       /* 0 关 / 1 每小时换 / 2 每天换 */
+
+    /* ── 墨水屏界面（末尾追加）──────
+       esl_layout : 0 标准（日历+天气） / 1 大字时间
+       esl_opts   : bit0 日历 bit1 天气 bit2 日出日落 bit3 品牌版本
+       0 = 旧配置读出来（用默认全开） */
+    uint8_t  esl_layout;
+    uint8_t  esl_opts;
+    char     esl_text[24];    /* 自定义一行字 */
 } app_settings_t;
 
 /**

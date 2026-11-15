@@ -141,6 +141,21 @@
     </select>
   </div>
   <div class="row"><label>角标文字</label><input type="text" id="deco_tag" maxlength="4" placeholder="最多 4 字，如 初音（留空不显示）"></div>
+  <div class="row">
+    <label>墨水屏布局</label>
+    <select id="esl_layout" style="flex:1;padding:6px;border-radius:8px">
+      <option value="0">标准（日历 + 天气）</option>
+      <option value="1">大字时间（时间 + 天气）</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>墨水屏显示</label>
+    <label style="flex:0 0 auto;font-weight:400"><input type="checkbox" id="esl_cal" style="width:20px;height:20px"> 日历</label>
+    <label style="flex:0 0 auto;font-weight:400"><input type="checkbox" id="esl_weather" style="width:20px;height:20px"> 天气</label>
+    <label style="flex:0 0 auto;font-weight:400"><input type="checkbox" id="esl_sun" style="width:20px;height:20px"> 日出日落</label>
+    <label style="flex:0 0 auto;font-weight:400"><input type="checkbox" id="esl_brand" style="width:20px;height:20px"> 品牌</label>
+  </div>
+  <div class="row"><label>墨水屏自定义文字</label><input type="text" id="esl_text" maxlength="10" placeholder="一行小字，如 今天也要加油（留空不显示）"></div>
   <div class="row"><label>网格背景</label><input type="checkbox" id="deco_grid" style="width:22px;height:22px;flex:0 0 auto"></div>
   <div class="row"><label>昼夜自动换主题</label><input type="checkbox" id="theme_auto" style="width:22px;height:22px;flex:0 0 auto"></div>
   <div class="row"><label>白天 / 夜里</label>
@@ -405,6 +420,15 @@ function renderStatus(o) {
   if (document.activeElement !== $('deco_icon')) $('deco_icon').value = String(c.deco_icon ?? 0);
   if (document.activeElement !== $('deco_tag')) $('deco_tag').value = c.deco_tag || '';
   $('deco_grid').checked = (c.deco_grid ?? 0) != 0;
+  if (document.activeElement !== $('esl_layout')) $('esl_layout').value = String(c.esl_layout ?? 0);
+  {
+    const o = c.esl_opts ?? 15;
+    $('esl_cal').checked = (o & 1) !== 0;
+    $('esl_weather').checked = (o & 2) !== 0;
+    $('esl_sun').checked = (o & 4) !== 0;
+    $('esl_brand').checked = (o & 8) !== 0;
+  }
+  if (document.activeElement !== $('esl_text')) $('esl_text').value = c.esl_text || '';
   $('theme_auto').checked = (c.theme_auto ?? 0) != 0;
   if (document.activeElement !== $('theme_day')) $('theme_day').value = String(c.theme_day ?? 0);
   if (document.activeElement !== $('theme_night')) $('theme_night').value = String(c.theme_night ?? 1);
@@ -760,6 +784,11 @@ $('btnSave').onclick = async () => {
   kv.push(['theme_day', $('theme_day').value || '0']);
   kv.push(['theme_night', $('theme_night').value || '1']);
   kv.push(['bg_rotate', $('bg_rotate').value]);
+  kv.push(['esl_layout', $('esl_layout').value]);
+  kv.push(['esl_opts', String(
+    ($('esl_cal').checked ? 1 : 0) | ($('esl_weather').checked ? 2 : 0) |
+    ($('esl_sun').checked ? 4 : 0) | ($('esl_brand').checked ? 8 : 0))]);
+  kv.push(['esl_text', $('esl_text').value.trim() || '-']);
     }
   }
   // 逐条下发并确认：以前一口气全发、不检查回复，某一条被板子拒了（比如 unknown_key）
