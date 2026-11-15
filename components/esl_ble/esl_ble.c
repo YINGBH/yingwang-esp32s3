@@ -1,4 +1,4 @@
-/*
+﻿/*
  * ESP32-S3 用 BLE 驱动盒马墨水价签（HINK-E029A14-A1 / 296x128 / 黑白红）
  *
  * 信息页排版（与电脑端 esl_page_v3.py 一致）：
@@ -778,7 +778,7 @@ void esl_ble_draw_test_pattern(void)
 
 static uint8_t s_layout = 0;          /* 0 标准（日历+天气） 1 大字时间 */
 static uint8_t s_opts = 0x0F;         /* 默认全开 */
-static char    s_custom[24] = "";     /* 自定义一行字 */
+static char    s_custom[48] = "";     /* 自定义一行字 */
 
 void esl_ble_set_ui(uint8_t layout, uint8_t opts, const char *text)
 {

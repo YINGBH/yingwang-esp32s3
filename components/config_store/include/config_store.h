@@ -1,4 +1,4 @@
-/*
+﻿/*
  * 配置持久化（NVS）
  *
  * 之前 WiFi 密码和宽带账号是编译期常量，改一次就得重新编译烧录。
@@ -74,7 +74,7 @@ typedef struct {
        0 = 旧配置读出来（用默认全开） */
     uint8_t  esl_layout;
     uint8_t  esl_opts;
-    char     esl_text[24];    /* 自定义一行字 */
+    char     esl_text[48];    /* 自定义一行字 */
 } app_settings_t;
 
 /**

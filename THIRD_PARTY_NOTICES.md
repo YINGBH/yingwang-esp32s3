@@ -199,3 +199,12 @@ copies or substantial portions of the Software.
 | Noto Sans Mono | OFL-1.1 | ✅ |
 
 **全部组件都与 MIT 兼容，可以直接分发。**
+
+## 点阵字库用到的字表
+
+- **《通用规范汉字表》一级字表（3500 字）** —— 2013 年教育部 / 国家语言文字工作委员会发布的国家标准，
+  字表本身不受著作权保护；数据经 [shengdoushi/common-standard-chinese-characters-table](https://github.com/shengdoushi/common-standard-chinese-characters-table) 整理。
+- **一言（Hitokoto）语料字表** —— 从 [hitokoto-osc/sentences-bundle](https://github.com/hitokoto-osc/sentences-bundle)
+  的 11,273 句里统计出 3,780 个汉字。**仓库只提交去重后的汉字表**
+  （`tools/hitokoto_chars.txt`），不包含任何句子原文，因此不涉及语料本身的授权；
+  使用一言接口请遵守 [developer.hitokoto.cn](https://developer.hitokoto.cn/sentence/) 的说明。

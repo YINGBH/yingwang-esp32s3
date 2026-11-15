@@ -106,8 +106,46 @@ def scanned_cjk():
     return "".join(sorted(chars))
 
 
+# 3500 常用字（《通用规范汉字表》一级表，tools/common_chars.txt）
+# 目的：自定义文字/签名这类运行时输入也能显示，不再出现缺字
+def common_chars():
+    path = os.path.join(ROOT, "tools", "common_chars.txt")
+    if not os.path.exists(path):
+        print("（没找到 tools/common_chars.txt，跳过常用字表）")
+        return ""
+    chars = set()
+    for line in io.open(path, encoding="utf-8"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        for ch in line:
+            if "\u4e00" <= ch <= "\u9fff":
+                chars.add(ch)
+    print(f"常用字表 {len(chars)} 字")
+    return "".join(sorted(chars))
+
+
+# 一言（Hitokoto）语料里的汉字：签名 / 励志短句要能完整显示
+# 语料来源 tools/hitokoto_chars.txt（由 tools/fetch_hitokoto.py 生成）
+def hitokoto_chars():
+    path = os.path.join(ROOT, "tools", "hitokoto_chars.txt")
+    if not os.path.exists(path):
+        print("（没找到 tools/hitokoto_chars.txt，跳过一言字表）")
+        return ""
+    chars = set()
+    for line in io.open(path, encoding="utf-8"):
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("##"):
+            continue
+        for ch in line:
+            if "\u4e00" <= ch <= "\u9fff":
+                chars.add(ch)
+    print(f"一言字表 {len(chars)} 字")
+    return "".join(sorted(chars))
+
+
 # 最终字表 = 手写表 + 源码自动扫描（保证画什么就有什么）
-CJK_ALL = "".join(dict.fromkeys(CJK + SMALL_BASE + scanned_cjk()))
+CJK_ALL = "".join(dict.fromkeys(CJK + SMALL_BASE + common_chars() + hitokoto_chars() + scanned_cjk()))
 
 
 def holiday_names():
