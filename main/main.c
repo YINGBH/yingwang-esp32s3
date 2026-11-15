@@ -255,6 +255,7 @@ static void render_status(void)
     char buf[48];
 
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+    bsp_deco_draw_grid();
 
     /* 顶部色条 + 大号状态字 */
     bsp_display_fill_rect(0, 24, 240, 4, color);
@@ -322,6 +323,7 @@ static void render_model(void)
 {
     char buf[64];
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+    bsp_deco_draw_grid();
 
     captcha_model_info_t mi;
     memset(&mi, 0, sizeof(mi));
@@ -358,6 +360,7 @@ static void render_model(void)
 static void render_esl(void)
 {
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+    bsp_deco_draw_grid();
 
     char st[48];
 
@@ -433,6 +436,7 @@ static void render_info(void)
     time_weather_get(&tw);
 
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+    bsp_deco_draw_grid();
 
     /* 时间：大号 */
     if (tw.time_valid) {
@@ -538,6 +542,7 @@ static void render_timer(void)
     int64_t left;
 
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+    bsp_deco_draw_grid();
 
     if (s_timer_state == 1) {
         left = s_timer_end_ms - now;
@@ -584,6 +589,7 @@ static void render_stopwatch(void)
     int64_t now = esp_timer_get_time() / 1000;
 
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+    bsp_deco_draw_grid();
 
     int64_t el = s_sw_base_ms + (s_sw_running ? (now - s_sw_start_ms) : 0);
     int sec = (int) (el / 1000);
@@ -676,6 +682,7 @@ static void render_alarms(void)
 {
     char buf[48];
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+    bsp_deco_draw_grid();
 
     time_weather_t tw;
     time_weather_get(&tw);
@@ -852,6 +859,7 @@ static void render_sys(void)
 {
     char buf[64];
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+    bsp_deco_draw_grid();
 
     app_settings_t cfg;
     config_store_snapshot(&cfg);
@@ -980,6 +988,7 @@ static int utf8_chunk(const char *s, int cols, char out[][64], int max_chunk)
 static void render_diag(void)
 {
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+    bsp_deco_draw_grid();
 
     /* ---------- 标题栏 ---------- */
     bsp_display_fill_rect(0, 24, 240, 20, TH_PANEL);
@@ -1169,7 +1178,9 @@ static void render_clock(void)
             bg_drawn = true;
         } else {
             bsp_display_fill_rect(0, 0, 240, 240, TH_BG);
+            bsp_deco_draw_grid();
         }
+        bsp_deco_draw_grid();      /* 网格装饰（可关）：画在内容之前 */
         s_clock_full = false;
         s_clock_minute = -1;
         s_clock_second = -999;      /* 进页面强制整页画一次 */
@@ -1266,6 +1277,7 @@ static void render_calendar(void)
 
     if (!tw.time_valid || tw.year < 2024) {
         bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+        bsp_deco_draw_grid();
         bsp_display_text_center(110, "对时后显示日历", TH_ACCENT, TH_BG, 1);
         return;
     }
@@ -1280,6 +1292,7 @@ static void render_calendar(void)
     char buf[64];
 
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+    bsp_deco_draw_grid();
 
     /* 月份标题 + 农历月份 */
     lunar_date_t ld;
@@ -1649,6 +1662,90 @@ static void esl_push_tick(void)
     }
 }
 
+/* ---------------- 外观自动化 ---------------- */
+
+static int s_last_bg_bucket = -1;
+static bool s_last_is_day = true;
+
+/* 从 "HH:MM" 里取小时，失败返回 -1 */
+static int hh_of(const char *s)
+{
+    if (!s || !s[0]) {
+        return -1;
+    }
+    int h = 0;
+    if (sscanf(s, "%d", &h) != 1) {
+        return -1;
+    }
+    return (h >= 0 && h < 24) ? h : -1;
+}
+
+/* 该用白天还是夜晚主题：优先用天气里的日出日落，没有就按 7~19 点 */
+static bool theme_is_day(void)
+{
+    time_weather_t tw;
+    memset(&tw, 0, sizeof(tw));
+    time_weather_get(&tw);
+    if (tw.time_valid) {
+        int sh = hh_of(tw.sunrise);
+        int eh = hh_of(tw.sunset);
+        if (sh >= 0 && eh >= 0 && eh > sh) {
+            int h = tw.hour;
+            return h >= sh && h < eh;
+        }
+        return tw.hour >= 7 && tw.hour < 19;
+    }
+    return true;
+}
+
+static void apply_auto_theme(void)
+{
+    const app_settings_t *cfg = config_store_get();
+    if (!cfg->theme_auto) {
+        return;
+    }
+    bool day = theme_is_day();
+    if (day == s_last_is_day) {
+        return;
+    }
+    s_last_is_day = day;
+    int want = day ? cfg->theme_day : cfg->theme_night;
+    if (want < 0 || want >= BSP_THEME_COUNT) {
+        want = 0;
+    }
+    bsp_theme_load_preset(want);
+    bsp_theme_ensure_readable(bg_has_image());
+    ESP_LOGI("app", "自动切换主题：%s -> %s", day ? "白天" : "夜晚",
+             bsp_theme_name(want) ? bsp_theme_name(want) : "?");
+    s_force_redraw = true;
+}
+
+/* 背景图轮换：每小时 / 每天在两张图之间换 */
+static void apply_bg_rotate(void)
+{
+    const app_settings_t *cfg = config_store_get();
+    if (!cfg->bg_rotate || !bg_has_image_at(0) || !bg_has_image_at(1)) {
+        return;
+    }
+    time_weather_t tw;
+    memset(&tw, 0, sizeof(tw));
+    time_weather_get(&tw);
+    if (!tw.time_valid) {
+        return;
+    }
+    int bucket = (cfg->bg_rotate == 1) ? (tw.day * 24 + tw.hour) : tw.day;
+    if (bucket == s_last_bg_bucket) {
+        return;
+    }
+    s_last_bg_bucket = bucket;
+    int slot = bucket % 2;
+    if (slot != bg_slot()) {
+        bg_set_slot(slot);
+        ESP_LOGI("app", "背景图轮换到槽 %d", slot);
+        s_force_redraw = true;
+    }
+}
+
 static void ui_task(void *arg)
 {
     (void) arg;
@@ -1827,6 +1924,8 @@ static void ui_task(void *arg)
             break;
         }
 
+        apply_auto_theme();
+        apply_bg_rotate();
         bsp_deco_draw();          /* 边框 / 角标图标 / 角标文字（可关） */
         bsp_display_flush();
 
@@ -3150,6 +3249,8 @@ void app_main(void)
     }
     bsp_theme_ensure_readable(bg_has_image());
     bsp_deco_set(cfg.deco_border, cfg.deco_icon, cfg.deco_tag);
+    bsp_deco_set_grid(cfg.deco_grid != 0);
+    /* 主题昼夜 / 背景轮换：运行时直接读 config（下面 apply_* 里读） */
 
     usb_console_init();                      /* USB 串口网页（Web Serial）命令行 */
     stats_init();

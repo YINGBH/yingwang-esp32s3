@@ -87,6 +87,10 @@ void bsp_theme_ensure_readable(bool has_background);
 /** 设置装饰（border/icon 越界自动夹到合法范围；tag 可为空字符串） */
 void bsp_deco_set(uint8_t border, uint8_t icon, const char *tag);
 
+/** 淡网格背景（1 = 开），在内容之前画 */
+void bsp_deco_set_grid(bool on);
+void bsp_deco_draw_grid(void);
+
 /** 按当前设置画装饰层 */
 void bsp_deco_draw(void);
 

@@ -44,4 +44,23 @@ esp_err_t bg_erase(void);
 /** 把背景图画到屏幕上（从 flash 逐行读，不用大缓冲） */
 esp_err_t bg_draw(void);
 
+
+/* ---- 多槽位（两张背景图轮换）---- */
+#define BG_SLOTS 2
+
+/** 当前用哪一槽（0..BG_SLOTS-1） */
+void bg_set_slot(int slot);
+
+/** 取当前槽位 */
+int bg_slot(void);
+
+/** 指定槽位有没有图 */
+bool bg_has_image_at(int slot);
+
+/** 上传/擦除指定槽位（默认接口内部用当前槽） */
+esp_err_t bg_upload_begin_at(int slot);
+esp_err_t bg_upload_chunk_at(int slot, const uint8_t *data, size_t len, size_t offset);
+esp_err_t bg_upload_finish_at(int slot, size_t total);
+esp_err_t bg_erase_at(int slot);
+
 #endif  // _SCREEN_BG_H_

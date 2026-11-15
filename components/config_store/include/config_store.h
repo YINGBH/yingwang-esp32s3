@@ -60,6 +60,13 @@ typedef struct {
     uint8_t  deco_border;     /* 0 无 1 细线 2 圆角 3 双线 */
     uint8_t  deco_icon;       /* 0 无 1 星星 2 爱心 3 音符 4 樱花 5 月亮 */
     char     deco_tag[16];    /* 左下角小字，空 = 不显示 */
+    uint8_t  deco_grid;       /* 1 = 画淡网格背景 */
+
+    /* ── 自动化：主题昼夜切换 / 背景图轮换（末尾追加）────── */
+    uint8_t  theme_auto;      /* 1 = 按日出日落在 theme_day/theme_night 之间切 */
+    uint8_t  theme_day;       /* 白天主题序号 */
+    uint8_t  theme_night;     /* 夜里主题序号 */
+    uint8_t  bg_rotate;       /* 0 关 / 1 每小时换 / 2 每天换 */
 } app_settings_t;
 
 /**

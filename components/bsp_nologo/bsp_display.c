@@ -1,4 +1,4 @@
-#include "bsp_display.h"
+﻿#include "bsp_display.h"
 #include "board_pins.h"
 #include "font_data.h"
 
@@ -694,6 +694,27 @@ static void draw_icon16(int x, int y, int which, uint16_t color)
                 bsp_display_fill_rect(x + c, y + r, 1, 1, color);
             }
         }
+    }
+}
+
+static bool s_grid = false;
+
+void bsp_deco_set_grid(bool on)
+{
+    s_grid = on;
+}
+
+void bsp_deco_draw_grid(void)
+{
+    if (!s_grid) {
+        return;
+    }
+    /* 24px 网格，用次要文字色画 1px 线：比 panel 色明显，又不抢内容 */
+    for (int x = 0; x < 240; x += 24) {
+        bsp_display_fill_rect(x, 0, 1, 240, TH_DIM);
+    }
+    for (int y = 0; y < 240; y += 24) {
+        bsp_display_fill_rect(0, y, 240, 1, TH_DIM);
     }
 }
 

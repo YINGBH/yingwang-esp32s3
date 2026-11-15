@@ -220,6 +220,12 @@ static void send_status(void)
     cJSON_AddNumberToObject(c, "deco_border", cfg.deco_border);
     cJSON_AddNumberToObject(c, "deco_icon", cfg.deco_icon);
     cJSON_AddStringToObject(c, "deco_tag", cfg.deco_tag);
+    cJSON_AddNumberToObject(c, "deco_grid", cfg.deco_grid);
+    cJSON_AddNumberToObject(c, "theme_auto", cfg.theme_auto);
+    cJSON_AddNumberToObject(c, "theme_day", cfg.theme_day);
+    cJSON_AddNumberToObject(c, "theme_night", cfg.theme_night);
+    cJSON_AddNumberToObject(c, "bg_rotate", cfg.bg_rotate);
+    cJSON_AddNumberToObject(c, "bg_slot", bg_slot());
     /* 站点参数：门户地址 / AC IP / 校园网 SSID，网页后台用这三项回填输入框 */
     cJSON_AddStringToObject(c, "portal_base", cfg.portal_base);
     cJSON_AddStringToObject(c, "portal_ac", cfg.portal_ac_ip);
@@ -422,6 +428,31 @@ static void do_set(char *kv)
             strlcpy(cfg.deco_tag, val, sizeof(cfg.deco_tag));
         }
         bsp_deco_set(cfg.deco_border, cfg.deco_icon, cfg.deco_tag);
+        theme_changed = true;
+    } else if (strcmp(key, "theme_auto") == 0) {
+        cfg.theme_auto = (uint8_t) (atoi(val) != 0);
+    } else if (strcmp(key, "theme_day") == 0 || strcmp(key, "theme_night") == 0) {
+        int v = atoi(val);
+        if (v < 0 || v >= BSP_THEME_COUNT) {
+            reply_err("主题序号越界");
+            return;
+        }
+        if (strcmp(key, "theme_day") == 0) {
+            cfg.theme_day = (uint8_t) v;
+        } else {
+            cfg.theme_night = (uint8_t) v;
+        }
+    } else if (strcmp(key, "bg_rotate") == 0) {
+        int v = atoi(val);
+        if (v < 0) v = 0;
+        if (v > 2) v = 2;
+        cfg.bg_rotate = (uint8_t) v;
+    } else if (strcmp(key, "bg_slot") == 0) {
+        bg_set_slot(atoi(val));
+        theme_changed = true;
+    } else if (strcmp(key, "deco_grid") == 0) {
+        cfg.deco_grid = (uint8_t) (atoi(val) != 0);
+        bsp_deco_set_grid(cfg.deco_grid != 0);
         theme_changed = true;
     } else if (strcmp(key, "theme_bg") == 0 || strcmp(key, "theme_accent") == 0) {
         /* 自定义主题：接受 0xRRGGBB（网页的 <input type=color>）或 0xRRRRGGGGBBBB 的 RGB565 */

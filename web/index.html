@@ -140,7 +140,20 @@
       <option value="5">🌙 月亮</option>
     </select>
   </div>
-  <div class="row"><label>角标文字</label><input type="text" id="deco_tag" maxlength="4" placeholder="最多 4 字，如 初音（留空不显示）"></div>  <div class="row" id="theme_custom_row" style="display:none">
+  <div class="row"><label>角标文字</label><input type="text" id="deco_tag" maxlength="4" placeholder="最多 4 字，如 初音（留空不显示）"></div>
+  <div class="row"><label>网格背景</label><input type="checkbox" id="deco_grid" style="width:22px;height:22px;flex:0 0 auto"></div>
+  <div class="row"><label>昼夜自动换主题</label><input type="checkbox" id="theme_auto" style="width:22px;height:22px;flex:0 0 auto"></div>
+  <div class="row"><label>白天 / 夜里</label>
+    <select id="theme_day" style="flex:1;padding:6px;border-radius:8px"></select>
+    <select id="theme_night" style="flex:1;padding:6px;border-radius:8px"></select>
+  </div>
+  <div class="row"><label>背景图轮换</label>
+    <select id="bg_rotate" style="flex:1;padding:6px;border-radius:8px">
+      <option value="0">不轮换</option>
+      <option value="1">每小时换一张</option>
+      <option value="2">每天换一张</option>
+    </select>
+  </div>  <div class="row" id="theme_custom_row" style="display:none">
     <label>自定义</label>
     <input type="color" id="theme_bg" value="#101c44" title="背景色" style="width:52px;height:34px;padding:0;border:none;background:none">
     <input type="color" id="theme_accent" value="#ffe000" title="强调色" style="width:52px;height:34px;padding:0;border:none;background:none">
@@ -391,6 +404,11 @@ function renderStatus(o) {
   if (document.activeElement !== $('deco_border')) $('deco_border').value = String(c.deco_border ?? 0);
   if (document.activeElement !== $('deco_icon')) $('deco_icon').value = String(c.deco_icon ?? 0);
   if (document.activeElement !== $('deco_tag')) $('deco_tag').value = c.deco_tag || '';
+  $('deco_grid').checked = (c.deco_grid ?? 0) != 0;
+  $('theme_auto').checked = (c.theme_auto ?? 0) != 0;
+  if (document.activeElement !== $('theme_day')) $('theme_day').value = String(c.theme_day ?? 0);
+  if (document.activeElement !== $('theme_night')) $('theme_night').value = String(c.theme_night ?? 1);
+  if (document.activeElement !== $('bg_rotate')) $('bg_rotate').value = String(c.bg_rotate ?? 0);
   if (document.activeElement !== $('alarm_vol')) $('alarm_vol').value = o.alarm_vol ?? 80;
 }
 
@@ -679,6 +697,18 @@ for (const deg of [0, 90, 180, 270]) {
   };
 }
 
+/* 白天/夜里主题下拉的选项，跟主题下拉保持一致 */
+(function fillThemeDayNight() {
+  const src = document.getElementById('theme');
+  if (!src) return;
+  const opts = [...src.querySelectorAll('option')].filter(o => o.value !== '-1');
+  for (const id of ['theme_day', 'theme_night']) {
+    const sel = document.getElementById(id);
+    if (!sel) continue;
+    sel.innerHTML = opts.map(o => `<option value="${o.value}">${o.textContent}</option>`).join('');
+  }
+})();
+
 /* ---------------- 主题 ---------------- */
 $('theme').onchange = () => {
   $('theme_custom_row').style.display = $('theme').value === '-1' ? 'flex' : 'none';
@@ -725,6 +755,11 @@ $('btnSave').onclick = async () => {
   kv.push(['deco_border', $('deco_border').value]);
   kv.push(['deco_icon', $('deco_icon').value]);
   kv.push(['deco_tag', $('deco_tag').value.trim() || '-']);
+  kv.push(['deco_grid', $('deco_grid').checked ? 1 : 0]);
+  kv.push(['theme_auto', $('theme_auto').checked ? 1 : 0]);
+  kv.push(['theme_day', $('theme_day').value || '0']);
+  kv.push(['theme_night', $('theme_night').value || '1']);
+  kv.push(['bg_rotate', $('bg_rotate').value]);
     }
   }
   // 逐条下发并确认：以前一口气全发、不检查回复，某一条被板子拒了（比如 unknown_key）
