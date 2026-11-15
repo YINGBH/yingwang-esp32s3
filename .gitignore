@@ -1,0 +1,32 @@
+# 编译产物
+build/
+sdkconfig.old
+*.map
+
+# 个人配置（填了自己的账号密码就别提交）
+# 模板是 main/app_config.example.h，复制成 app_config.h 再改
+main/app_config.h
+
+# 生成点阵用的开源字体（tools/fetch_fonts.py 会下载，8.5 MB，不进库）
+tools/*.otf
+tools/*.ttf
+tools/*.ttc
+
+# 日志 / 缓存
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+
+# 抓登录脚本的运行产物（代理日志、抓到的验证码图片，里面可能有账号片段）
+capture/
+
+# 验证码训练的样本和产物（体积大，且是某所学校门户的数据，别提交）
+data/captcha/
+tools/captcha_train/out/
+
+# 网页工具的运行时端口文件
+web/port.txt
+
+# 打包产物
+*.zip

@@ -1,0 +1,22 @@
+# 分区表：16MB Flash（板子实测 16384k，日志每次启动都报
+# "Detected size(16384k) larger than the size in the binary image header(8192k)"）
+#
+# 之前的 8MB 布局浪费了一半 flash。现在按真实的 16MB 排：
+#
+#   0x009000  nvs        24 KB   NVS（配置 / 统计 / 备用网络）
+#   0x00F000  phy_init    4 KB   射频校准数据
+#   0x010000  factory    12 MB   固件（当前 1.4MB，余量极大）
+#   0xC10000  storage   3.9 MB   验证码模型 + 背景图 + 样本（模型在分区起始偏移 0）
+#   0xFF0000  coredump   64 KB   崩溃转储
+#             ---------------
+#   总长 0x1000000 = 16 MB
+#
+# 注意：model_q.bin 和背景图都在 storage 分区里，
+#       分区位置变了必须把 model_q.bin 重烧到 0xC10000。
+#
+# Name,     Type, SubType,  Offset,    Size,      Flags
+nvs,        data, nvs,      0x9000,    0x6000,
+phy_init,   data, phy,      0xf000,    0x1000,
+factory,    app,  factory,  0x10000,   0xC00000,
+storage,    data, spiffs,   0xC10000,  0x3E0000,
+coredump,   data, coredump, 0xFF0000,  0x10000,

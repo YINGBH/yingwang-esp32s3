@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>YingWang 板子 · USB 串口配置</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px auto; max-width: 880px; padding: 0 16px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { opacity: .65; margin-bottom: 18px; }
+  button { padding: 7px 14px; border-radius: 8px; border: 1px solid #8888; background: #4b6bfb; color: #fff; cursor: pointer; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.ghost { background: transparent; color: inherit; }
+  button.danger { background: #d9534f; }
+  fieldset { border: 1px solid #8884; border-radius: 10px; padding: 12px 16px 16px; margin: 16px 0; }
+  legend { padding: 0 6px; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+  .row label { width: 110px; flex: none; opacity: .8; }
+  input[type=text], input[type=password], input[type=number] { flex: 1; padding: 6px 8px; border-radius: 6px; border: 1px solid #8886; background: transparent; color: inherit; }
+  #state { font-size: 13px; padding: 8px 12px; border-radius: 8px; background: #8881; margin-bottom: 10px; white-space: pre-wrap; }
+  #log { font: 12px/1.45 ui-monospace, Consolas, monospace; background: #8881; border-radius: 8px; padding: 10px; height: 130px; overflow: auto; white-space: pre-wrap; }
+  .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 14px; }
+  .kv div { padding: 6px 10px; background: #8881; border-radius: 8px; }
+  .kv b { display: block; font-size: 12px; opacity: .6; font-weight: 500; }
+  #bgPreview { width: 120px; height: 120px; border-radius: 10px; border: 1px solid #8884; object-fit: cover; }
+  #screen { width: 300px; height: 300px; border-radius: 12px; border: 1px solid #8886; background: #000; image-rendering: pixelated; }
+  .keys { display: flex; gap: 10px; flex-wrap: wrap; }
+  .keys button { min-width: 90px; }
+  #statsLine { font-size: 12px; opacity: .75; margin-top: 6px; }
+</style>
+</head>
+<body>
+<h1>YingWang 板子 · USB 串口配置</h1>
+<div class="sub">用 USB 线连板子，Chrome/Edge 里点“连接串口”，选那个 USB 串行设备（COMx）。不需要 WiFi，也不占板子内存。</div>
+
+<div class="row">
+  <button id="btnConnect">连接串口</button>
+  <button id="btnDisconnect" class="ghost" disabled>断开</button>
+  <button id="btnRefresh" class="ghost" disabled>刷新状态</button>
+</div>
+<div id="state">未连接</div>
+<div class="kv" id="status"></div>
+<div id="statsLine"></div>
+
+<fieldset>
+  <legend>屏幕 &amp; 按键（远程看屏、远程按键）</legend>
+  <div class="row">
+    <canvas id="screen" width="240" height="240"></canvas>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button id="btnShot" disabled>抓一帧（约 10 秒）</button>
+      <div class="keys">
+        <button id="btnKey0" class="ghost" disabled>BOOT</button>
+        <button id="btnKey1" class="ghost" disabled>UP</button>
+        <button id="btnKey2" class="ghost" disabled>DOWN</button>
+      </div>
+      <div style="opacity:.6;font-size:12px;line-height:1.6">
+        BOOT 在状态页 = 重试认证；UP/DOWN = 翻页<br>
+        长按无法模拟，需要真按键
+      </div>
+    </div>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>背景图（时钟页，240×240，自动居中裁剪）</legend>
+  <div class="row">
+    <input type="file" id="bgFile" accept="image/*">
+    <button id="btnBgUpload" disabled>上传背景</button>
+    <button id="btnBgClear" class="ghost" disabled>清除背景</button>
+    <canvas id="bgPreview" width="240" height="240"></canvas>
+  </div>
+  <div class="row">
+    <label style="min-width:96px">遮罩浓度</label>
+    <input type="range" id="bgMask" min="0" max="90" value="55" style="flex:1">
+    <span id="bgMaskV" style="width:44px;text-align:right">55%</span>
+  </div>
+  <div class="row">
+    <label style="min-width:96px">渐变起点</label>
+    <input type="range" id="bgMaskTop" min="0" max="100" value="45" style="flex:1">
+    <span id="bgMaskTopV" style="width:44px;text-align:right">45%</span>
+    <span style="opacity:.55;font-size:12px">从这一高度开始往下变暗</span>
+  </div>
+  <div class="row"><span id="bgProgress" style="opacity:.7"></span></div>
+</fieldset>
+
+
+<fieldset>
+  <legend>配置（改完点保存；密码留空表示不改）</legend>
+  <div class="row"><label>WiFi 名称</label><input type="text" id="ssid"></div>
+  <div class="row"><label>WiFi 密码</label><input type="password" id="pass" placeholder="留空不改"></div>
+  <div class="row"><label>宽带账号</label><input type="text" id="user"></div>
+  <div class="row"><label>宽带密码</label><input type="password" id="pwd" placeholder="留空不改"></div>
+<div class="row"><label>门户地址</label><input type="text" id="portal_base" placeholder="http://10.0.0.1:8090（留空=用编译期默认）"></div>
+<div class="row"><label>AC IP</label><input type="text" id="portal_ac" placeholder="跳转 URL 里的 wlanacip"></div>
+<div class="row"><label>校园网 SSID</label><input type="text" id="portal_ssid" placeholder="大小写要和实际完全一致"></div>
+  <div class="row"><label>城市</label><input type="text" id="city"></div>
+  <div class="row"><label>生日</label><input type="text" id="birthday" placeholder="10-31"></div>
+  <div class="row"><label>静态IP</label><input type="text" id="static_ip" placeholder="192.168.1.240（留空=DHCP）"></div>
+  <div class="row"><label>屏幕方向</label><select id="rot" style="flex:1;padding:6px;border-radius:8px"><option value="0">0° 正常</option><option value="90">90° 竖放</option><option value="180">180° 倒装</option><option value="270">270° 竖放反向</option></select></div>
+    <div class="row"><label>亮度 0-100</label><input type="number" id="brightness" min="0" max="100"></div>
+  <div class="row"><label>息屏 分钟</label><input type="number" id="screen_off" min="0" max="60"></div>
+  <div class="row"><label>充电时也熄屏</label><input type="checkbox" id="charge_off" style="width:22px;height:22px;flex:0 0 auto"></div>
+  <div class="row"><label>熄屏亮度 0-100</label><input type="number" id="off_bright" min="0" max="100" placeholder="0=全黑清屏；>0 低亮度常显"></div>
+  <div class="row"><label>闹钟音量 0-100</label><input type="number" id="alarm_vol" min="0" max="100"></div>
+  <div class="row">
+    <label>屏幕方向</label>
+    <button id="btnRot0" class="ghost" disabled>0°</button>
+    <button id="btnRot90" class="ghost" disabled>90°</button>
+    <button id="btnRot180" class="ghost" disabled>180°</button>
+    <button id="btnRot270" class="ghost" disabled>270°</button>
+  </div>
+  <div class="row">
+    <button id="btnSave" disabled>保存配置</button>
+    <button id="btnReconnect" class="ghost" disabled>重连 WiFi</button>
+    <button id="btnReboot" class="danger" disabled>重启板子</button>
+  </div>
+</fieldset>
+
+<fieldset id="alarmField">
+  <legend>闹钟（4 个，勾「开」才生效）</legend>
+  <div id="alarmRows" style="font-size:13px"></div>
+  <div class="row" style="margin-top:8px">
+    <button id="btnAlarmSave" disabled>全部写入</button>
+    <button id="btnAlarmReload" class="ghost" disabled>从板子读取</button>
+    <span id="alarmMsg" style="font-size:12px;opacity:.75"></span>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>板上日志</legend>
+  <div class="row">
+    <button id="btnLogRam" class="ghost" disabled>拉 RAM 日志</button>
+    <button id="btnLogFlash" class="ghost" disabled>拉 flash 历史</button>
+    <button id="btnLogClear" class="ghost" disabled>清空板子日志</button>
+    <button id="btnLogCopy" class="ghost" disabled>复制</button>
+  </div>
+  <pre id="boardLog" style="max-height:320px;overflow:auto;background:#0b0f14;color:#c8d3e0;
+       font:12px/1.45 Consolas,monospace;padding:8px;border-radius:8px;white-space:pre-wrap;
+       word-break:break-all;margin:6px 0 0"></pre>
+</fieldset>
+
+<fieldset>
+  <legend>串口日志</legend>
+  <div id="log"></div>
+</fieldset>
+
+<script>
+/* 全局错误兜底：页面脚本一有异常就明确告诉你，而不是"点了没反应" */
+window.onerror = function (msg, src, line) {
+  try {
+    var el = document.getElementById('state');
+    if (el) el.textContent = '脚本错误：' + msg;
+    alert('页面脚本出错：' + msg + '\n（第 ' + line + ' 行）\n请把这句话发给我');
+  } catch (e) {}
+  return false;
+};
+
+let port = null, reader = null, writer = null, connected = false, pollTimer = null;
+  setAlarmUiEnabled(false);
+let lastPort = null, manualDisconnect = false, reconnectTimer = null, reconnectTries = 0;
+let uploading = false, ackWaiters = [];
+let shotMode = false, shotState = 0, shotNeed = 0, shotChunks = [], shotTimer = null;
+let connId = 0;      /* 连接代次：自动重连时，旧 readLoop 的收尾不能动新连接的全局变量 */
+
+const $ = (id) => document.getElementById(id);
+const logEl = $('log');
+const stateEl = $('state');
+const screenCv = $('screen');
+const sctx = screenCv.getContext('2d');
+const screenImg = sctx.createImageData(240, 240);
+
+function log(msg) {
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent += `[${t}] ${msg}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+/* 板子回来的字符串（SSID/IP/状态）要转义再用 —— 直接塞 innerHTML 的话，
+   一个叫 <img onerror=...> 的热点就能在这个页面上跑脚本（页面本身有串口权限） */
+function esc(s) {
+  return String(s).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function setConnected(on) {
+  connected = on;
+  $('btnConnect').disabled = on;
+  for (const id of ['btnDisconnect','btnRefresh','btnSave','btnReconnect','btnReboot',
+                    'btnBgUpload','btnBgClear','btnShot','btnKey0','btnKey1','btnKey2',
+                    'btnRot0','btnRot90','btnRot180','btnRot270',
+                    'btnLogRam','btnLogFlash','btnLogClear','btnLogCopy']) {
+    $(id).disabled = !on;
+  }
+  setAlarmUiEnabled(on);
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (on) pollTimer = setInterval(() => { if (!uploading && !shotMode) send('GET'); }, 3000);
+}
+
+async function send(cmd) {
+  if (!connected || !writer) return;
+  try { await writer.write(new TextEncoder().encode(cmd + "\n")); }
+  catch (e) { log('写串口失败：' + e.message); }
+}
+
+/* 等一条命令的应答。
+   pred 用来挑"这条应答是不是我等的"：默认排除状态回包（带 cfg/version 的 GET 回复），
+   否则每 3 秒一次的 GET 回复会把 SET/BGC 之类的应答抢走，UI 就以为命令成功了。 */
+function waitAck(ms = 30000, pred = null) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      ackWaiters = ackWaiters.filter(w => w !== waiter);
+      reject(new Error('等待板子应答超时'));
+    }, ms);
+    const waiter = (obj) => { clearTimeout(timer); resolve(obj); };
+    waiter.pred = pred || (o => !o.cfg && !o.version);
+    ackWaiters.push(waiter);
+  });
+}
+
+function handleTextLine(line) {
+  if (!line.startsWith('@')) { if (line.startsWith('E (')) log(line); return; }
+  let obj = null;
+  try { obj = JSON.parse(line.slice(1)); } catch (e) { return; }
+  if (ackWaiters.length > 0) {
+    const i = ackWaiters.findIndex(w => w.pred(obj));
+    if (i >= 0) {
+      const w = ackWaiters[i];
+      ackWaiters.splice(i, 1);
+      w(obj);
+      return;
+    }
+  }
+  if (obj.ok === false) { log('板子返回错误：' + (obj.err || '?')); return; }
+  if (obj.cfg) renderStatus(obj);
+}
+
+/* ---------------- 屏幕抓帧 ---------------- */
+
+function drawFrame(buf) {
+  const d = screenImg.data;
+  for (let i = 0, p = 0; i < 240 * 240; i++, p += 2) {
+    const v = buf[p] | (buf[p + 1] << 8);
+    d[i * 4]     = ((v >> 11) & 0x1F) << 3;
+    d[i * 4 + 1] = ((v >> 5) & 0x3F) << 2;
+    d[i * 4 + 2] = (v & 0x1F) << 3;
+    d[i * 4 + 3] = 255;
+  }
+  sctx.putImageData(screenImg, 0, 0);
+}
+
+async function grabScreen() {
+  if (!connected) return;
+  shotMode = true; shotState = 0; shotNeed = 0; shotChunks = [];
+  $('btnShot').textContent = '抓取中…';
+  /* 没有超时的话：板子不回（拔了/卡住）就永远卡在"抓取中"，还会把 GET 轮询停掉 */
+  if (shotTimer) clearTimeout(shotTimer);
+  shotTimer = setTimeout(() => {
+    if (!shotMode) return;
+    shotMode = false; shotState = 0; shotChunks = [];
+    $('btnShot').textContent = '抓一帧（约 10 秒）';
+    log('抓帧超时，已取消');
+  }, 40000);
+  await send('SHOT');
+}
+
+function feedShot(chunk) {
+  if (shotState === 0) {
+    shotChunks.push(chunk);
+    const all = concat(shotChunks);
+    const s = new TextDecoder().decode(all);
+    const idx = s.indexOf('@SHOT');
+    if (idx < 0) { shotChunks = [all]; return; }
+    const nl = s.indexOf('\n', idx);
+    if (nl < 0) return;
+    shotNeed = parseInt(s.slice(idx + 5, nl).trim(), 10) || 0;
+    shotState = 1;
+    shotChunks = [all.slice(new TextEncoder().encode(s.slice(0, nl + 1)).length)];
+    return;
+  }
+  shotChunks.push(chunk);
+  const all = concat(shotChunks);
+  if (all.length >= shotNeed && shotNeed > 0) {
+    drawFrame(all.subarray(0, shotNeed));
+    log('屏幕已刷新');
+    shotMode = false; shotState = 0; shotChunks = [];
+    if (shotTimer) { clearTimeout(shotTimer); shotTimer = null; }
+    $('btnShot').textContent = '抓一帧（约 10 秒）';
+  } else {
+    shotChunks = [all];
+  }
+}
+
+function concat(chunks) {
+  let n = 0;
+  for (const c of chunks) n += c.length;
+  const out = new Uint8Array(n);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+/* ---------------- 状态展示 ---------------- */
+
+function renderStatus(o) {
+  if (o.alarms) fillAlarms(o.alarms);
+  stateEl.textContent = `板子状态：${o.state || '?'}　运行 ${Math.floor((o.uptime||0)/60)} 分钟`;
+  $('status').innerHTML = [
+    ['WiFi', o.ssid || '未连接'],
+    ['IP', o.ip || '--'],
+    ['信号', o.rssi ? o.rssi + ' dBm' : '--'],
+    ['内部内存', Math.round((o.heap||0)/1024) + ' KB'],
+  ].map(([k, v]) => `<div><b>${k}</b>${esc(v)}</div>`).join('');
+
+  const st = o.stats;
+  if (st) {
+    $('statsLine').textContent =
+      `认证统计：今日 成功 ${st.today_ok} / 失败 ${st.today_fail} / 掉线 ${st.today_drop}` +
+      `　·　近 7 天 成功 ${st.week_ok} / 失败 ${st.week_fail} / 掉线 ${st.week_drop}`;
+  }
+
+  const c = o.cfg || {};
+  if (document.activeElement !== $('ssid')) $('ssid').value = c.ssid || '';
+  if (document.activeElement !== $('user')) $('user').value = c.user || '';
+  if (document.activeElement !== $('city')) $('city').value = c.city || '';
+  if (document.activeElement !== $('birthday')) $('birthday').value = o.birthday || '';
+  if (document.activeElement !== $('static_ip')) $('static_ip').value = o.static_ip || '';
+  if (document.activeElement !== $('portal_base')) $('portal_base').value = c.portal_base || '';
+  if (document.activeElement !== $('portal_ac')) $('portal_ac').value = c.portal_ac || '';
+  if (document.activeElement !== $('portal_ssid')) $('portal_ssid').value = c.portal_ssid || '';
+  if (document.activeElement !== $('brightness')) $('brightness').value = c.brightness ?? 80;
+  if (document.activeElement !== $('rot')) $('rot').value = o.rot ?? 0;
+  if (document.activeElement !== $('screen_off')) $('screen_off').value = c.screen_off ?? 0;
+  $('charge_off').checked = (c.charge_off ?? 0) != 0;
+  if (document.activeElement !== $('off_bright')) $('off_bright').value = c.off_bright ?? 0;
+  if (document.activeElement !== $('alarm_vol')) $('alarm_vol').value = o.alarm_vol ?? 80;
+}
+
+/* ---------------- 连接 ---------------- */
+
+async function connect(reuse) {
+  if (!('serial' in navigator)) { alert('当前浏览器不支持 Web Serial，请用 Chrome 或 Edge 打开。'); return; }
+  try {
+    let p = reuse ? lastPort : null;
+    if (!p) {
+      p = await navigator.serial.requestPort();
+    }
+    lastPort = p;
+    port = p;
+    // 上一次的句柄可能还开着，先关掉（关不掉就忽略）
+    try { await p.close(); } catch (e) {}
+    await p.open({ baudRate: 115200 });
+    const myId = ++connId;             /* 新一代连接：旧 readLoop 收尾时据此退出 */
+    writer = p.writable.getWriter();
+    reader = p.readable.getReader();
+    manualDisconnect = false;
+    reconnectTries = 0;
+    setConnected(true);
+    log(reuse ? '串口已重新连上' : '已连接串口');
+    send('GET');
+    readLoop(myId);
+  } catch (e) {
+    log('连接失败：' + e.message);
+    if (reuse) {
+      scheduleReconnect();
+    } else {
+      alert('连接失败：' + e.message + '\n\n如果提示占用，先在别的程序里关掉这个串口。');
+    }
+  }
+}
+
+/* 板子复位/USB 重新枚举后，端口会失效：过 2.5 秒自动重连，最多 10 次 */
+function scheduleReconnect() {
+  if (manualDisconnect || !lastPort) return;
+  if (reconnectTimer) return;
+  if (reconnectTries >= 10) {
+    stateEl.textContent = '串口连不上，请重新点「连接串口」';
+    return;
+  }
+  reconnectTries++;
+  stateEl.textContent = '串口断开了（板子可能复位过），2.5 秒后自动重连…（第 ' + reconnectTries + ' 次）';
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    await connect(true);
+  }, 2500);
+}
+
+async function readLoop(myId) {
+  const myReader = reader;             /* 捕获自己这一代 reader，别用可能已被替换的全局变量 */
+  const decoder = new TextDecoder();
+  let textBuf = '';
+  try {
+    while (true) {
+      const { value, done } = await myReader.read();
+      if (done) break;
+      if (shotMode) { feedShot(value); continue; }
+      if (logMode) { feedLog(value); continue; }
+      textBuf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = textBuf.indexOf('\n')) >= 0) {
+        const line = textBuf.slice(0, idx).replace(/\r$/, '');
+        textBuf = textBuf.slice(idx + 1);
+        if (line) handleTextLine(line);
+      }
+    }
+  } catch (e) {
+    log('读串口中断：' + e.message);
+  } finally {
+    try { myReader.releaseLock(); } catch (e) {}
+    /* 旧一代连接的收尾：如果新连接已经接管（myId !== connId），
+       这里再清 reader/断开/重连会把新连接拆掉，直接退出 */
+    if (myId !== connId) return;
+    reader = null;
+    await disconnect(false);
+    if (!manualDisconnect) scheduleReconnect();
+  }
+}
+
+async function disconnect(doClose = true) {
+  if (doClose) {
+    manualDisconnect = true;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    reconnectTries = 0;
+  }
+  setConnected(false);
+  if (doClose) {
+    try { if (reader) await reader.cancel(); } catch (e) {}
+    try { if (writer) writer.releaseLock(); } catch (e) {}
+    writer = null;
+    try { if (port) await port.close(); } catch (e) {}
+    port = null;
+    log('已断开');
+  }
+}
+
+/* ---------------- 按键 ---------------- */
+
+$('btnKey0').onclick = () => send('KEY 0');
+$('btnKey1').onclick = () => send('KEY 1');
+$('btnKey2').onclick = () => send('KEY 2');
+
+$('btnShot').onclick = grabScreen;
+
+/* ---------------- 背景图 ---------------- */
+
+/* 遮罩参数：底部浓度 + 从哪一行开始变暗（都是百分比） */
+function maskParams() {
+  const bottom = parseInt($('bgMask').value, 10) / 100;
+  const topPct = parseInt($('bgMaskTop').value, 10) / 100;
+  return { bottom, topY: Math.round(240 * topPct) };
+}
+
+/* 在画布上盖一层自上而下的黑色渐变（顶部全透明 → 底部 bottom 不透明度） */
+function applyMask(ctx) {
+  const { bottom, topY } = maskParams();
+  if (bottom <= 0) return;
+  const g = ctx.createLinearGradient(0, topY, 0, 240);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.45, `rgba(0,0,0,${(bottom * 0.55).toFixed(3)})`);
+  g.addColorStop(1, `rgba(0,0,0,${bottom.toFixed(3)})`);
+  ctx.save();
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 240, 240);
+  ctx.restore();
+}
+
+function drawPreview(img) {
+  const cv = $('bgPreview'), ctx = cv.getContext('2d');
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 240, 240);
+  const s = Math.max(240 / img.width, 240 / img.height);
+  const w = img.width * s, h = img.height * s;
+  ctx.drawImage(img, (240 - w) / 2, (240 - h) / 2, w, h);
+  applyMask(ctx);          /* 预览也带遮罩，所见即所得 */
+}
+
+async function toRGB565(file) {
+  const img = await createImageBitmap(file);
+  const cv = document.createElement('canvas');
+  cv.width = 240; cv.height = 240;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 240, 240);
+  const s = Math.max(240 / img.width, 240 / img.height);
+  const w = img.width * s, h = img.height * s;
+  ctx.drawImage(img, (240 - w) / 2, (240 - h) / 2, w, h);
+  applyMask(ctx);          /* 上传前把遮罩烧进像素 */
+  drawPreview(img);
+  const d = ctx.getImageData(0, 0, 240, 240).data;
+  const out = new Uint8Array(240 * 240 * 2);
+  for (let i = 0; i < 240 * 240; i++) {
+    const v = ((d[i*4] >> 3) << 11) | ((d[i*4+1] >> 2) << 5) | (d[i*4+2] >> 3);
+    out[i*2] = v & 0xFF; out[i*2+1] = (v >> 8) & 0xFF;
+  }
+  return out;
+}
+
+/* 滑块一动：更新数字，并重画预览 */
+function refreshMaskLabel() {
+  $('bgMaskV').textContent = $('bgMask').value + '%';
+  $('bgMaskTopV').textContent = $('bgMaskTop').value + '%';
+  const f = $('bgFile').files[0];
+  if (f) createImageBitmap(f).then(drawPreview).catch(() => {});
+}
+$('bgMask').oninput = refreshMaskLabel;
+$('bgMaskTop').oninput = refreshMaskLabel;
+
+$('bgFile').onchange = async () => {
+  const f = $('bgFile').files[0];
+  if (!f) return;
+  try { drawPreview(await createImageBitmap(f)); log('已选择图片，点“上传背景”'); }
+  catch (e) { log('图片读不出来：' + e.message); }
+};
+
+$('btnBgUpload').onclick = async () => {
+  const f = $('bgFile').files[0];
+  if (!f) { alert('先选一张图片'); return; }
+  if (!connected || !writer) { alert('先连接串口'); return; }
+  uploading = true;
+  $('bgProgress').textContent = '处理图片…';
+  try {
+    const bytes = await toRGB565(f);
+    await writer.write(new TextEncoder().encode('BGR ' + bytes.length + '\n'));
+    for (let off = 0; off < bytes.length; off += 4096) {
+      await writer.write(bytes.subarray(off, off + 4096));
+      $('bgProgress').textContent = `上传中 ${Math.min(100, Math.round(off / bytes.length * 100))}%`;
+      await new Promise(r => setTimeout(r, 0));
+    }
+    $('bgProgress').textContent = '等待板子确认…';
+    const ack = await waitAck(40000);
+    $('bgProgress').textContent = ack && ack.ok ? '已上传完成' : '板子返回失败';
+    if (ack && ack.ok) log('背景图已更新');
+  } catch (e) {
+    log('背景上传出错：' + e.message);
+  } finally { uploading = false; }
+};
+
+$('btnBgClear').onclick = async () => {
+  if (!confirm('把板子上的背景图删掉？')) return;
+  uploading = true;
+  try {
+    await writer.write(new TextEncoder().encode('BGC\n'));
+    const ack = await waitAck(8000);
+    log(ack && ack.ok ? '背景已清除' : '清除失败');
+  } catch (e) { log('清除出错：' + e.message); }
+  finally { uploading = false; }
+};
+
+/* ---------------- 基本操作 ---------------- */
+
+$('btnConnect').onclick = () => {
+  const st = $('state');
+  if (st) st.textContent = '正在请求串口…（应该会弹出端口选择框）';
+  connect(false);
+};   /* 手动连接：不传事件对象，避免被当成 reuse */
+$('btnDisconnect').onclick = () => disconnect(true);
+$('btnRefresh').onclick = () => send('GET');
+
+/* ---------------- 板上日志拉取 ---------------- */
+let logMode = null;      /* { buf, resolve, tag } */
+
+function feedLog(chunk) {
+  if (!logMode) return;
+  /* 解码器要跨 chunk 复用：每次 new 一个的话，一个汉字被拆在两个 USB 包里就会变成乱码 */
+  if (!logMode.dec) logMode.dec = new TextDecoder();
+  logMode.buf += logMode.dec.decode(chunk, { stream: true });
+  const end = logMode.buf.indexOf('@LOGEND');
+  if (end < 0) return;
+  const raw = logMode.buf.slice(0, end);
+  const m = logMode.resolve;
+  logMode = null;
+  /* 第一行是 @{...} 头，其余是日志正文 */
+  let body = raw;
+  const nl = raw.indexOf('\n');
+  if (nl >= 0 && raw.startsWith('@')) body = raw.slice(nl + 1);
+  if (m) m(body);
+}
+
+async function pullLog(kind, n) {
+  if (!connected) { alert('先连接串口'); return; }
+  if (logMode) return;
+  const el = $('boardLog');
+  el.textContent = '正在拉取 ' + kind + ' …';
+  const cmd = (kind === 'flash' ? 'LOGF ' : 'LOG ') + (n || 300);
+  const text = await new Promise(async (resolve) => {
+    logMode = { buf: '', resolve, tag: kind };
+    await send(cmd);
+    setTimeout(() => {
+      if (logMode) {
+        const body = logMode.buf;
+        logMode = null;
+        resolve(body || '(超时，没有收到日志)');
+      }
+    }, 20000);
+  });
+  el.textContent = text || '(空)';
+  el.scrollTop = 0;
+  log('已拉取 ' + kind + ' 日志：' + (text ? text.split('\n').length : 0) + ' 行');
+}
+
+$('btnLogRam').onclick = () => pullLog('ram', 400);
+$('btnLogFlash').onclick = () => pullLog('flash', 800);
+$('btnLogClear').onclick = async () => {
+  if (!confirm('清空板子上的 flash 日志？')) return;
+  await send('FLOGC');
+  log('已请求清空 flash 日志');
+};
+$('btnLogCopy').onclick = async () => {
+  const t = $('boardLog').textContent || '';
+  if (!t) return;
+  try { await navigator.clipboard.writeText(t); log('日志已复制到剪贴板'); }
+  catch (e) { log('复制失败：' + e.message); }
+};
+
+/* 屏幕方向：点一下立刻生效（不用走"保存配置"） */
+for (const deg of [0, 90, 180, 270]) {
+  $('btnRot' + deg).onclick = async () => {
+    await send('SET rot=' + deg);
+    await waitAck(3000);
+    log('屏幕方向 -> ' + deg + '°');
+    const sel = $('rot');
+    if (sel) sel.value = String(deg);
+  };
+}
+
+$('btnSave').onclick = async () => {
+  if (!connected || !writer) { alert('先连接串口'); return; }
+  const kv = [
+    ['ssid', $('ssid').value.trim()],
+    ['wifi_pass', $('pass').value],
+    ['user', $('user').value.trim()],
+    ['portal_pass', $('pwd').value],
+    ['portal_base', $('portal_base').value.trim() || '-'],
+    ['portal_ac', $('portal_ac').value.trim() || '-'],
+    ['portal_ssid', $('portal_ssid').value.trim() || '-'],
+    ['city', $('city').value.trim()],
+    ['birthday', $('birthday').value.trim()],
+    ['static_ip', $('static_ip').value.trim() || '-'],
+    ['brightness', $('brightness').value],
+    ['rot', $('rot').value],
+    ['screen_off', $('screen_off').value],
+    ['charge_off', $('charge_off').checked ? 1 : 0],
+    ['off_bright', $('off_bright').value],
+  ];
+  // 逐条下发并确认：以前一口气全发、不检查回复，某一条被板子拒了（比如 unknown_key）
+  // 界面上完全看不出来，用户会以为"保存成功"
+  const bad = [];
+  $('btnSave').disabled = true;
+  log('开始下发配置（逐条确认）…');
+  for (const [k, v] of kv) {
+    if (v === '' || v === null) continue;
+    try {
+      await send(`SET ${k}=${v}`);
+      const ack = await waitAck(6000);
+      if (!ack || !ack.ok) bad.push(`${k}=${(ack && ack.err) || '失败'}`);
+    } catch (e) {
+      bad.push(`${k}=超时`);
+    }
+    await new Promise(r => setTimeout(r, 120));
+  }
+  $('pass').value = ''; $('pwd').value = '';
+  if ($('alarm_vol').value !== '') await send('VOL ' + $('alarm_vol').value);
+  if (bad.length) {
+    log('配置下发有问题（' + bad.length + ' 项）：' + bad.join('，'));
+    alert('有 ' + bad.length + ' 项没写进去：\n' + bad.join('\n'));
+  } else {
+    log('配置已下发，全部确认成功');
+  }
+  $('btnSave').disabled = false;
+  setTimeout(() => send('GET'), 800);
+};
+
+/* 启动自检：把 Web Serial 是否可用直接显示出来 */
+(function () {
+  const st = $('state');
+  if (!st) return;
+  if (!('serial' in navigator)) {
+    st.textContent = '本浏览器不支持 Web Serial —— 请用 Chrome 或 Edge 打开本页';
+  } else if (location.protocol === 'file:') {
+    st.textContent = 'Web Serial 可用，但 file:// 下可能受限 —— 请用 http://127.0.0.1:8765 打开';
+  } else {
+    st.textContent = 'Web Serial 可用 —— 点「连接串口」选择 USB 串行设备';
+  }
+})();
+
+$('btnReconnect').onclick = () => { send('RECONNECT'); log('已请求重连 WiFi'); };
+$('btnReboot').onclick = () => { if (confirm('确定重启板子？')) { send('REBOOT'); log('已请求重启'); } };
+
+/* ================= 闹钟 ================= */
+const WD_CN = ["一", "二", "三", "四", "五", "六", "日"];
+let alarmDirty = false;
+
+function alarmEls() {
+  return document.querySelectorAll('#alarmRows .arow');
+}
+
+function buildAlarmRows() {
+  const box = document.getElementById('alarmRows');
+  if (!box) return;
+  let html = '';
+  for (let i = 1; i <= 4; i++) {
+    let wd = '';
+    for (let d = 0; d < 7; d++) {
+      wd += `<label style="display:inline-flex;align-items:center;gap:1px;margin-right:5px;font-size:12px">`
+          + `<input type="checkbox" class="wd" data-a="${i}" data-d="${d}">${WD_CN[d]}</label>`;
+    }
+    html += `<div class="arow" data-a="${i}" style="display:flex;align-items:center;gap:8px;margin:4px 0">
+      <b style="width:14px;opacity:.6">${i}</b>
+      <input type="text" class="atime" data-a="${i}" value="07:00" maxlength="5"
+             placeholder="07:30" inputmode="numeric"
+             style="width:64px;padding:4px 6px;border-radius:6px;text-align:center;
+                    background:#0f1419;color:#dbe4ee;border:1px solid #2a3441;font-family:monospace">
+      <span>${wd}</span>
+      <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;margin-left:auto">
+        <input type="checkbox" class="aen" data-a="${i}">开</label>
+      <button class="ghost btnOne" data-a="${i}" style="padding:2px 8px;font-size:12px" disabled>写入</button>
+    </div>`;
+  }
+  box.innerHTML = html;
+
+  // 任何改动都标记为"脏"，轮询不再覆盖
+  box.addEventListener('input', () => { alarmDirty = true; });
+  box.addEventListener('change', () => { alarmDirty = true; });
+
+  box.querySelectorAll('.btnOne').forEach(b => {
+    b.addEventListener('click', () => saveOne(+b.dataset.a));
+  });
+}
+
+function setAlarmUiEnabled(on) {
+  const box = document.getElementById('alarmRows');
+  if (box) box.querySelectorAll('input,button').forEach(el => { el.disabled = !on; });
+  const s = document.getElementById('btnAlarmSave');
+  const r = document.getElementById('btnAlarmReload');
+  if (s) s.disabled = !on;
+  if (r) r.disabled = !on;
+}
+
+function alarmMsg(t) {
+  const el = document.getElementById('alarmMsg');
+  if (el) el.textContent = t;
+}
+
+/* 读一行：返回 {time:'07:30', mask:127, en:true} 或 null */
+function readRow(i) {
+  const box = document.getElementById('alarmRows');
+  if (!box) return null;
+  const t = box.querySelector(`.atime[data-a="${i}"]`);
+  const en = box.querySelector(`.aen[data-a="${i}"]`);
+  if (!t) return null;
+  let v = (t.value || '').trim().replace(/[^\d:]/g, '');
+  if (!/^\d{1,2}:\d{2}$/.test(v)) {
+    alarmMsg(`第 ${i} 行时间格式不对，应该是 07:30 这样`);
+    return null;
+  }
+  let [hh, mm] = v.split(':').map(Number);
+  if (hh > 23 || mm > 59) {
+    alarmMsg(`第 ${i} 行时间超出范围`);
+    return null;
+  }
+  let mask = 0;
+  for (let d = 0; d < 7; d++) {
+    const cb = box.querySelector(`.wd[data-a="${i}"][data-d="${d}"]`);
+    if (cb && cb.checked) mask |= (1 << d);
+  }
+  return {
+    time: String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0'),
+    mask, en: !!(en && en.checked),
+  };
+}
+
+async function saveOne(i) {
+  const r = readRow(i);
+  if (!r) return;
+  const cmd = `SET alarm${i}=${r.time},${r.mask},${r.en ? 1 : 0}`;
+  alarmMsg('发送 ' + cmd);
+  await send(cmd);
+  setTimeout(() => { send('GET'); }, 500);
+}
+
+async function saveAlarms() {
+  let ok = 0;
+  for (let i = 1; i <= 4; i++) {
+    const r = readRow(i);
+    if (!r) return;
+    await send(`SET alarm${i}=${r.time},${r.mask},${r.en ? 1 : 0}`);
+    ok++;
+    await new Promise(res => setTimeout(res, 80));
+  }
+  alarmDirty = false;
+  alarmMsg(`已写入 ${ok} 个闹钟，正在回读…`);
+  setTimeout(() => { send('GET'); }, 600);
+}
+
+function fillAlarms(alarms) {
+  if (alarmDirty) return;                 // 用户改过就别覆盖
+  const a0 = document.activeElement;
+  if (a0 && a0.closest && a0.closest('#alarmRows')) return;   // 正在输入
+  if (!Array.isArray(alarms)) return;
+  const box = document.getElementById('alarmRows');
+  if (!box) return;
+  alarms.forEach(a => {
+    const t = box.querySelector(`.atime[data-a="${a.id}"]`);
+    if (t) t.value = String(a.hour).padStart(2, '0') + ':' + String(a.min).padStart(2, '0');
+    const en = box.querySelector(`.aen[data-a="${a.id}"]`);
+    if (en) en.checked = !!a.en;
+    const m = (a.mask === 0 || a.mask === 0x7F) ? 0x7F : a.mask;
+    for (let d = 0; d < 7; d++) {
+      const cb = box.querySelector(`.wd[data-a="${a.id}"][data-d="${d}"]`);
+      if (cb) cb.checked = !!(m & (1 << d));
+    }
+  });
+  alarmDirty = false;
+}
+
+buildAlarmRows();
+(() => {
+  const s = document.getElementById('btnAlarmSave');
+  const r = document.getElementById('btnAlarmReload');
+  if (s) s.addEventListener('click', saveAlarms);
+  if (r) r.addEventListener('click', () => {
+    alarmDirty = false;
+    alarmMsg('正在从板子读取…');
+    send('GET');
+  });
+})();
+
+</script>
+</body>
+</html>
