@@ -9,6 +9,8 @@
 ![License](https://img.shields.io/badge/license-MIT-black)
 ![Build](https://img.shields.io/badge/build-v5.5.6%20%C2%B7%200%20warnings-success)
 
+[快速开始](#快速开始) · [文档](#文档) · [支持学校](#支持学校) · [目录](#目录) · [**交流群**](#交流群) · [许可](#许可与免责)
+
 ![六个界面](docs/screen_preview.png)
 
 > 板子真实截图，2× 放大。状态页和系统页的 WiFi 名 / IP / 账号已打码成占位值。
@@ -76,7 +78,7 @@ python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0xC10000 model_q.
 **不想装 IDF**：直接下 Release 里的整片镜像，一步烧完（占位符配置，不含真实账号）：
 
 ```bash
-python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.15.0-full.bin
+python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.15.1-full.bin
 ```
 
 烧完用 USB 网页后台填 WiFi / 宽带账号 / 门户地址即可，不需要联网也能填。
@@ -85,7 +87,7 @@ python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.1
 **网页后台怎么开**：Windows 双击 `web\启动网页.cmd`（免安装），其他系统
 `python web/serve.py` 后打开 `http://127.0.0.1:8765`。见 [web/README.md](web/README.md)。
 
-> 不想 clone 整个仓库：Release 里有单独的 **`yingwang-web-tool-v2.15.0.zip`**，
+> 不想 clone 整个仓库：Release 里有单独的 **`yingwang-web-tool-v2.15.1.zip`**，
 > 解压后双击 `启动网页.cmd` 就能用。
 
 门户地址、AC IP、校园网 SSID **都可以在网页后台或串口里改**（`SET portal_base=...`），
@@ -128,6 +130,7 @@ python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.1
 | [docs/学校名单.md](docs/学校名单.md) | 已验证的学校 / 运营商，以及新增一所学校的步骤 |
 | [发布说明.md](发布说明.md) | 这个发布版做过哪些处理和验证 |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | 第三方组件与字体许可 |
+| [交流群](#交流群) | QQ 群 **220745204**，加群密码请邮件 **3165832882@qq.com** 索取 |
 
 ## 目录
 

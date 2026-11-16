@@ -9,6 +9,10 @@ set(IDF_TARGET "esp32s3")
 # 唯一来源是仓库根目录的 VERSION 文件，改版本号只改那一个文件
 file(READ "${CMAKE_CURRENT_LIST_DIR}/VERSION" PROJECT_VER)
 string(STRIP "${PROJECT_VER}" PROJECT_VER)
+# 让 cmake 把 VERSION 当成配置依赖：改了 VERSION 会自动重新配置。
+# 不加这行的话，idf.py build 会沿用缓存里的旧 PROJECT_VER（踩过）。
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${CMAKE_CURRENT_LIST_DIR}/VERSION")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
