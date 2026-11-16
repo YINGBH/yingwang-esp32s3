@@ -226,6 +226,8 @@ static void send_status(void)
     cJSON_AddNumberToObject(c, "theme_night", cfg.theme_night);
     cJSON_AddNumberToObject(c, "bg_rotate", cfg.bg_rotate);
     cJSON_AddNumberToObject(c, "bg_slot", bg_slot());
+    cJSON_AddNumberToObject(c, "batt_used", cfg.batt_used_min);
+    cJSON_AddNumberToObject(c, "batt_est", cfg.batt_est_hours);
     cJSON_AddNumberToObject(c, "esl_layout", cfg.esl_layout);
     cJSON_AddNumberToObject(c, "esl_opts", cfg.esl_opts ? cfg.esl_opts : 0x0F);
     cJSON_AddStringToObject(c, "esl_text", cfg.esl_text);
@@ -432,6 +434,16 @@ static void do_set(char *kv)
         }
         bsp_deco_set(cfg.deco_border, cfg.deco_icon, cfg.deco_tag);
         theme_changed = true;
+    } else if (strcmp(key, "batt_est") == 0) {
+        int v = atoi(val);
+        if (v < 0) v = 0;
+        if (v > 200) v = 200;
+        cfg.batt_est_hours = (uint8_t) v;
+    } else if (strcmp(key, "batt_used") == 0) {
+        int v = atoi(val);
+        if (v < 0) v = 0;
+        if (v > 65535) v = 65535;
+        cfg.batt_used_min = (uint16_t) v;
     } else if (strcmp(key, "esl_layout") == 0) {
         cfg.esl_layout = (uint8_t) ((atoi(val) != 0) ? 1 : 0);
         esl_ble_set_ui(cfg.esl_layout, cfg.esl_opts ? cfg.esl_opts : 0x0F, cfg.esl_text);

@@ -75,6 +75,8 @@ typedef struct {
     uint8_t  esl_layout;
     uint8_t  esl_opts;
     char     esl_text[48];    /* 自定义一行字 */
+    uint16_t batt_used_min;   /* 电池供电累计分钟（充电时回补），续航估算用 */
+    uint8_t  batt_est_hours;  /* 满电预计能用多少小时，0 = 用默认 24 */
     uint8_t  esl_img_mode;    /* 已废弃：自定义图片已移除，字段保留只为不破坏旧 blob 布局 */
 } app_settings_t;
 

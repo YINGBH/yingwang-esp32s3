@@ -15,6 +15,8 @@
   fieldset { border: 1px solid #8884; border-radius: 10px; padding: 12px 16px 16px; margin: 16px 0; }
   legend { padding: 0 6px; font-weight: 600; }
   .row { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+.row > * { min-width: 0; }
+.row select, .row input, .row textarea, .row button { max-width: 100%; box-sizing: border-box; }
   .row label { width: 110px; flex: none; opacity: .8; }
   input[type=text], input[type=password], input[type=number] { flex: 1; padding: 6px 8px; border-radius: 6px; border: 1px solid #8886; background: transparent; color: inherit; }
   #state { font-size: 13px; padding: 8px 12px; border-radius: 8px; background: #8881; margin-bottom: 10px; white-space: pre-wrap; }
@@ -96,14 +98,14 @@
   <div class="row"><label>城市</label><input type="text" id="city"></div>
   <div class="row"><label>生日</label><input type="text" id="birthday" placeholder="10-31"></div>
   <div class="row"><label>静态IP</label><input type="text" id="static_ip" placeholder="192.168.1.240（留空=DHCP）"></div>
-  <div class="row"><label>屏幕方向</label><select id="rot" style="flex:1;padding:6px;border-radius:8px"><option value="0">0° 正常</option><option value="90">90° 竖放</option><option value="180">180° 倒装</option><option value="270">270° 竖放反向</option></select></div>
+  <div class="row"><label>屏幕方向</label><select id="rot" style="flex:1;min-width:0;padding:6px;border-radius:8px"><option value="0">0° 正常</option><option value="90">90° 竖放</option><option value="180">180° 倒装</option><option value="270">270° 竖放反向</option></select></div>
     <div class="row"><label>亮度 0-100</label><input type="number" id="brightness" min="0" max="100"></div>
   <div class="row"><label>息屏 分钟</label><input type="number" id="screen_off" min="0" max="60"></div>
   <div class="row"><label>充电时也熄屏</label><input type="checkbox" id="charge_off" style="width:22px;height:22px;flex:0 0 auto"></div>
   <div class="row"><label>熄屏亮度 0-100</label><input type="number" id="off_bright" min="0" max="100" placeholder="0=全黑清屏；>0 低亮度常显"></div>
   <div class="row">
     <label>主题</label>
-    <select id="theme" style="flex:1;padding:6px;border-radius:8px">
+    <select id="theme" style="flex:1;min-width:0;padding:6px;border-radius:8px">
       <option value="0">深蓝（默认）</option>
       <option value="1">纯黑 · OLED</option>
       <option value="2">森林绿</option>
@@ -122,7 +124,7 @@
   </div>
   <div class="row">
     <label>边框</label>
-    <select id="deco_border" style="flex:1;padding:6px;border-radius:8px">
+    <select id="deco_border" style="flex:1;min-width:0;padding:6px;border-radius:8px">
       <option value="0">无</option>
       <option value="1">细线</option>
       <option value="2">圆角</option>
@@ -131,7 +133,7 @@
   </div>
   <div class="row">
     <label>角标图标</label>
-    <select id="deco_icon" style="flex:1;padding:6px;border-radius:8px">
+    <select id="deco_icon" style="flex:1;min-width:0;padding:6px;border-radius:8px">
       <option value="0">无</option>
       <option value="1">★ 星星</option>
       <option value="2">♥ 爱心</option>
@@ -143,7 +145,7 @@
   <div class="row"><label>角标文字</label><input type="text" id="deco_tag" maxlength="4" placeholder="最多 4 字，如 初音（留空不显示）"></div>
   <div class="row">
     <label>墨水屏布局</label>
-    <select id="esl_layout" style="flex:1;padding:6px;border-radius:8px">
+    <select id="esl_layout" style="flex:1;min-width:0;padding:6px;border-radius:8px">
       <option value="0">标准（日历 + 天气）</option>
       <option value="1">大字时间（时间 + 天气）</option>
     </select>
@@ -160,13 +162,18 @@
     <input type="text" id="esl_text" maxlength="16" placeholder="一行小字，如 今天也要加油（留空不显示）">
     <button id="btnHito" class="ghost" disabled title="联网拉一句一言（拉不到用内置句库）">拉一句</button>
   </div>
+  <div class="row">
+    <label>电池预计总时长</label>
+    <input type="number" id="batt_est" min="1" max="200" placeholder="小时，默认 2">
+    <span style="font-size:12px;opacity:.65">满电能用几小时（0=默认 2）</span>
+  </div>
   <div class="row"><label>昼夜自动换主题</label><input type="checkbox" id="theme_auto" style="width:22px;height:22px;flex:0 0 auto"></div>
   <div class="row"><label>白天 / 夜里</label>
-    <select id="theme_day" style="flex:1;padding:6px;border-radius:8px"></select>
-    <select id="theme_night" style="flex:1;padding:6px;border-radius:8px"></select>
+    <select id="theme_day" style="flex:1;min-width:0;padding:6px;border-radius:8px"></select>
+    <select id="theme_night" style="flex:1;min-width:0;padding:6px;border-radius:8px"></select>
   </div>
   <div class="row"><label>背景图轮换</label>
-    <select id="bg_rotate" style="flex:1;padding:6px;border-radius:8px">
+    <select id="bg_rotate" style="flex:1;min-width:0;padding:6px;border-radius:8px">
       <option value="0">不轮换</option>
       <option value="1">每小时换一张</option>
       <option value="2">每天换一张</option>
@@ -431,6 +438,7 @@ function renderStatus(o) {
     $('esl_brand').checked = (o & 8) !== 0;
   }
   if (document.activeElement !== $('esl_text')) $('esl_text').value = c.esl_text || '';
+  if (document.activeElement !== $('batt_est')) $('batt_est').value = c.batt_est || '';
   $('theme_auto').checked = (c.theme_auto ?? 0) != 0;
   if (document.activeElement !== $('theme_day')) $('theme_day').value = String(c.theme_day ?? 0);
   if (document.activeElement !== $('theme_night')) $('theme_night').value = String(c.theme_night ?? 1);
@@ -809,6 +817,7 @@ $('btnSave').onclick = async () => {
     ($('esl_cal').checked ? 1 : 0) | ($('esl_weather').checked ? 2 : 0) |
     ($('esl_sun').checked ? 4 : 0) | ($('esl_brand').checked ? 8 : 0))]);
   kv.push(['esl_text', $('esl_text').value.trim() || '-']);
+  kv.push(['batt_est', $('batt_est').value || '0']);
     }
   }
   // 逐条下发并确认：以前一口气全发、不检查回复，某一条被板子拒了（比如 unknown_key）

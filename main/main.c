@@ -213,6 +213,82 @@ static int text_w(const char *s, uint8_t scale)
 }
 
 /* 顶部标题条：左边标题，右边状态灯 */
+/* ---------------- 电池续航估算 ----------------
+   板子没有电池电压 ADC（只有充电检测脚），所以只能用"时间"推算：
+   - 电池供电：s_batt_used_s 按真实时间累加
+   - 充电中：按约 2 小时充满的速度回补（12 倍速）
+   剩余 = batt_est_hours(默认 24) - 已用。到 0 就显示 0。
+   每 5 分钟把已用时间写回 NVS，重启不丢。 */
+#define BATT_DEFAULT_HOURS  2       /* 200mAh 电池：0.9*200/100mA ≈ 1.8 小时 */
+#define BATT_CHARGE_RATE    12      /* 充电时每 1 秒回补 12 秒 */
+#define BATT_SAVE_STEP_S    300
+
+static int32_t s_batt_used_s = -1;   /* -1 = 还没从配置里读过 */
+static int32_t s_batt_saved_s = 0;
+static int64_t s_batt_last_us = 0;
+
+static void batt_model_tick(void)
+{
+    const app_settings_t *cfg = config_store_get();
+    if (s_batt_used_s < 0) {
+        s_batt_used_s = (int32_t) cfg->batt_used_min * 60;
+        s_batt_saved_s = s_batt_used_s;
+    }
+
+    int64_t now = esp_timer_get_time();
+    if (s_batt_last_us == 0) {
+        s_batt_last_us = now;
+        return;
+    }
+    int64_t dt = (now - s_batt_last_us) / 1000000;   /* 秒 */
+    if (dt <= 0) {
+        return;
+    }
+    s_batt_last_us = now;
+
+    if (bsp_power_is_charging()) {
+        s_batt_used_s -= (int32_t) (dt * BATT_CHARGE_RATE);
+        if (s_batt_used_s < 0) {
+            s_batt_used_s = 0;
+        }
+    } else {
+        s_batt_used_s += (int32_t) dt;
+    }
+
+    /* 每 5 分钟落盘一次，别把 flash 写爆 */
+    if (s_batt_used_s - s_batt_saved_s >= BATT_SAVE_STEP_S ||
+        s_batt_saved_s - s_batt_used_s >= BATT_SAVE_STEP_S) {
+        app_settings_t copy = *cfg;
+        copy.batt_used_min = (uint16_t) (s_batt_used_s / 60);
+        if (config_store_save(&copy) == ESP_OK) {
+            s_batt_saved_s = s_batt_used_s;
+        }
+    }
+}
+
+/* 电池供电时算「预计还剩多久」，充电中返回 false（不显示） */
+static bool batt_estimate_text(char *out, size_t cap)
+{
+    if (bsp_power_is_charging()) {
+        return false;
+    }
+    const app_settings_t *cfg = config_store_get();
+    int32_t total_h = cfg->batt_est_hours ? cfg->batt_est_hours : BATT_DEFAULT_HOURS;
+    int32_t total_s = total_h * 3600;
+    int32_t used = s_batt_used_s < 0 ? 0 : s_batt_used_s;
+    int32_t left = total_s - used;
+    if (left < 0) {
+        left = 0;
+    }
+    int32_t h = left / 3600, m = (left % 3600) / 60;
+    if (h > 0) {
+        snprintf(out, cap, "剩 %ld时%02ld分", (long) h, (long) m);
+    } else {
+        snprintf(out, cap, "剩 %ld分", (long) m);
+    }
+    return true;
+}
+
 static void draw_header(const char *title, int state)
 {
     uint16_t color;
@@ -221,6 +297,21 @@ static void draw_header(const char *title, int state)
 
     bsp_display_fill_rect(0, 0, 240, 24, color);
     bsp_display_text(6, 4, text, COLOR_BLACK, color, 1);
+
+    /* 电池供电时，顶栏右侧显示预计剩余时间 */
+    char bat[24];
+    if (batt_estimate_text(bat, sizeof(bat))) {
+        const app_settings_t *c = config_store_get();
+        int reserve = 0;
+        if (c->deco_tag[0]) {               /* 右上角有角标文字，给它留位置 */
+            reserve = bsp_display_text_width(c->deco_tag, 1) + 16;
+        }
+        int w = text_w(bat, 1);
+        int tw = text_w(title, 1);
+        if (w + tw + reserve + 20 < 240) {   /* 太挤就不画，别压住标题 */
+            bsp_display_text(240 - 6 - reserve - w, 4, bat, COLOR_BLACK, color, 1);
+        }
+    }
 }
 
 /* 一行「标签  值」 */
@@ -3527,6 +3618,8 @@ void app_main(void)
                 wifi_sta_force_reconnect();
             }
         }
+
+        batt_model_tick();
 
         portal_probe_t probe = portal_probe(&w);
 
