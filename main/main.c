@@ -217,7 +217,7 @@ static int text_w(const char *s, uint8_t scale)
    板子没有电池电压 ADC（只有充电检测脚），所以只能用"时间"推算：
    - 电池供电：s_batt_used_s 按真实时间累加
    - 充电中：按约 2 小时充满的速度回补（12 倍速）
-   剩余 = batt_est_hours(默认 24) - 已用。到 0 就显示 0。
+   剩余 = batt_est_hours(默认 2) - 已用。到 0 就显示 0。
    每 5 分钟把已用时间写回 NVS，重启不丢。 */
 #define BATT_DEFAULT_HOURS  2       /* 200mAh 电池：0.9*200/100mA ≈ 1.8 小时 */
 #define BATT_CHARGE_RATE    12      /* 充电时每 1 秒回补 12 秒 */
@@ -3046,7 +3046,14 @@ static void build_defaults(app_settings_t *d)
     d->rot = APP_ROT;
     d->brightness = APP_BRIGHTNESS;
     d->screen_off_min = APP_SCREEN_OFF_MIN;
-    d->birthday = 0;        /* 0 = 不提醒生日 */          /* 生日：10 月 31 日 */
+    d->birthday = 0;        /* 0 = 不提醒生日 */
+    /* 电池相关默认值（200mAh 电池）：以前 memset 后是 0，
+       导致「低电量保持常亮」实际关着、和文档不一致（自查时发现） */
+    d->batt_est_hours = 2;      /* 满电约 2 小时 */
+    d->batt_low_min = 15;       /* 剩 15 分钟算低电量 */
+    d->batt_low_keepon = 1;     /* 低电量时保持常亮 */
+    d->probe_sec = 120;         /* 电池供电时 120 秒探测一次 */
+    d->probe_plugged = 0;       /* 插电仍用 15 秒 */
 }
 
 
