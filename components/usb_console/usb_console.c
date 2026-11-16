@@ -767,7 +767,7 @@ static void cli_task(void *arg)
                 break;
             }
             esl_ble_draw_test_pattern();
-            esp_err_t e = esl_ble_push_info();
+            esp_err_t e = esl_ble_push_manual(true);   /* 手动推：绕过网络门 */
             if (e == ESP_OK) {
                 reply_ok();
             } else {
@@ -934,7 +934,7 @@ static void cli_task(void *arg)
                    rc == 0 ? "true" : "false", code, conf[0], conf[1], conf[2], conf[3]);
             fflush(stdout);
         } else if (strcmp(line, "ESL") == 0) {
-            esp_err_t e = esl_ble_push_info();
+            esp_err_t e = esl_ble_push_manual(true);   /* 手动推：绕过网络门 */
             printf("@{\"ok\":%s}\n", e == ESP_OK ? "true" : "false");
             fflush(stdout);
 

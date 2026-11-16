@@ -160,6 +160,25 @@
     <input type="text" id="esl_text" maxlength="16" placeholder="一行小字，如 今天也要加油（留空不显示）">
     <button id="btnHito" class="ghost" disabled title="联网拉一句一言（拉不到用内置句库）">拉一句</button>
   </div>
+  <div class="row">
+    <label>价签图片</label>
+    <input type="file" id="eslImgFile" accept="image/*" style="flex:1">
+  </div>
+  <div class="row">
+    <label>图片用法</label>
+    <select id="esl_img" style="flex:1;padding:6px;border-radius:8px">
+      <option value="0">不显示图片</option>
+      <option value="1">整屏图片</option>
+      <option value="2">左半图片 + 右侧天气</option>
+      <option value="3">左侧日历 + 右半图片</option>
+    </select>
+  </div>
+  <div class="row">
+    <button id="btnEslImgUpload" class="ghost" disabled>上传到价签</button>
+    <button id="btnEslImgClear" class="ghost" disabled>删除图片</button>
+    <button id="btnEslPush" class="ghost" disabled>推送价签</button>
+  </div>
+  <div class="row"><span id="eslImgProgress" style="font-size:12px;color:#666"></span></div>
   <div class="row"><label>昼夜自动换主题</label><input type="checkbox" id="theme_auto" style="width:22px;height:22px;flex:0 0 auto"></div>
   <div class="row"><label>白天 / 夜里</label>
     <select id="theme_day" style="flex:1;padding:6px;border-radius:8px"></select>
@@ -263,7 +282,7 @@ function setConnected(on) {
   $('btnConnect').disabled = on;
   for (const id of ['btnDisconnect','btnRefresh','btnSave','btnReconnect','btnReboot',
                     'btnBgUpload','btnBgClear','btnShot','btnKey0','btnKey1','btnKey2',
-                    'btnRot0','btnRot90','btnRot180','btnRot270','btnThemeApply','btnHito',
+                    'btnRot0','btnRot90','btnRot180','btnRot270','btnThemeApply','btnHito','btnEslImgUpload','btnEslImgClear','btnEslPush',
                     'btnLogRam','btnLogFlash','btnLogClear','btnLogCopy']) {
     $(id).disabled = !on;
   }
@@ -431,6 +450,7 @@ function renderStatus(o) {
     $('esl_brand').checked = (o & 8) !== 0;
   }
   if (document.activeElement !== $('esl_text')) $('esl_text').value = c.esl_text || '';
+  if (document.activeElement !== $('esl_img')) $('esl_img').value = String(c.esl_img ?? 0);
   $('theme_auto').checked = (c.theme_auto ?? 0) != 0;
   if (document.activeElement !== $('theme_day')) $('theme_day').value = String(c.theme_day ?? 0);
   if (document.activeElement !== $('theme_night')) $('theme_night').value = String(c.theme_night ?? 1);
@@ -754,6 +774,107 @@ $('btnHito').onclick = async () => {
   }
 };
 
+/* ---------------- 价签自定义图片 ---------------- */
+
+/* 图片 → 296x128 双 plane（plane0 黑=0/白=1；plane1 红=1），列镜像与固件 col_of() 一致 */
+async function eslImgPlanes(file) {
+  const bmp = await createImageBitmap(file);
+  const W = 296, H = 128, RB = 16, PLANE = W * RB;
+
+  const srcR = bmp.width / bmp.height, dstR = W / H;
+  let nw, nh;
+  if (srcR > dstR) { nh = H; nw = Math.round(H * srcR); }
+  else { nw = W; nh = Math.round(W / srcR); }
+
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+  // 居中裁切
+  ctx.drawImage(bmp, 0, 0, bmp.width, bmp.height,
+                -(nw - W) / 2, -(nh - H) / 2, nw, nh);
+
+  const data = ctx.getImageData(0, 0, W, H).data;
+  const out = new Uint8Array(PLANE * 2);
+  out.fill(0xFF, 0, PLANE);
+  out.fill(0x00, PLANE, PLANE * 2);
+
+  for (let y = 0; y < H; y++) {
+    const byteI = y >> 3, bit = 0x80 >> (y & 7);
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const col = W - 1 - x;
+      const idx = col * RB + byteI;
+      const isRed = (r > 120 && r - g > 55 && r - b > 55);
+      const lum = (r * 299 + g * 587 + b * 114) / 1000;
+      if (isRed) { out[PLANE + idx] |= bit; out[idx] &= ~bit; }
+      else if (lum < 128) { out[idx] &= ~bit; }
+    }
+  }
+  return out;
+}
+
+function u8ToHex(u8) {
+  let s = '';
+  for (const b of u8) s += b.toString(16).padStart(2, '0');
+  return s;
+}
+
+$('btnEslImgUpload').onclick = async () => {
+  const f = $('eslImgFile').files[0];
+  if (!f) { alert('先选一张图片'); return; }
+  if (!connected || !writer) { alert('先连接串口'); return; }
+  uploading = true;
+  const prog = $('eslImgProgress');
+  try {
+    prog.textContent = '处理图片…';
+    const data = await eslImgPlanes(f);
+    prog.textContent = '开始上传…';
+    await send('EIMG B');
+    await waitAck(8000);
+
+    const step = 24;           // 每片 24 字节：行长约 60，避开 80 字符截断
+    for (let off = 0; off < data.length; off += step) {
+      const chunk = data.subarray(off, off + step);
+      let ok = false;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        await send(`EIMG D ${off} ` + u8ToHex(chunk));
+        const ack = await waitAck(4000);
+        if (ack && ack.ok && ack.n === chunk.length) { ok = true; break; }
+      }
+      if (!ok) { prog.textContent = `第 ${off} 字节失败`; log('价签图片上传失败'); return; }
+      if (off % (step * 40) === 0) {
+        prog.textContent = `上传中 ${Math.round(off / data.length * 100)}%`;
+      }
+    }
+
+    await send('EIMG E');
+    const done = await waitAck(15000);
+    prog.textContent = (done && done.ok) ? '已保存，正在切换模式…' : '保存失败';
+    await send('SET esl_img=' + $('esl_img').value);
+    await waitAck(6000);
+    prog.textContent = '完成，可点「推送价签」上屏';
+    log('价签图片上传完成');
+  } catch (e) {
+    log('价签图片出错：' + e.message);
+  } finally { uploading = false; }
+};
+
+$('btnEslImgClear').onclick = async () => {
+  if (!confirm('删除板子上的价签图片？')) return;
+  await send('EIMG X');
+  const ack = await waitAck(6000);
+  log(ack && ack.ok ? '价签图片已删除' : '删除失败');
+};
+
+$('btnEslPush').onclick = async () => {
+  await send('ESL');
+  const ack = await waitAck(60000);
+  log(ack && ack.ok ? '已推送（整屏刷新约 12 秒）' : '推送失败');
+};
+
 /* ---------------- 主题 ---------------- */
 $('theme').onchange = () => {
   $('theme_custom_row').style.display = $('theme').value === '-1' ? 'flex' : 'none';
@@ -809,6 +930,7 @@ $('btnSave').onclick = async () => {
     ($('esl_cal').checked ? 1 : 0) | ($('esl_weather').checked ? 2 : 0) |
     ($('esl_sun').checked ? 4 : 0) | ($('esl_brand').checked ? 8 : 0))]);
   kv.push(['esl_text', $('esl_text').value.trim() || '-']);
+  kv.push(['esl_img', $('esl_img').value]);
     }
   }
   // 逐条下发并确认：以前一口气全发、不检查回复，某一条被板子拒了（比如 unknown_key）
