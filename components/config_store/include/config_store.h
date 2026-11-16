@@ -75,7 +75,7 @@ typedef struct {
     uint8_t  esl_layout;
     uint8_t  esl_opts;
     char     esl_text[48];    /* 自定义一行字 */
-    uint8_t  esl_img_mode;    /* 0 关 1 整屏图片 2 左半图片 3 右半图片 */
+    uint8_t  esl_img_mode;    /* 已废弃：自定义图片已移除，字段保留只为不破坏旧 blob 布局 */
 } app_settings_t;
 
 /**

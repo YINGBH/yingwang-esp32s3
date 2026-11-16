@@ -19,7 +19,7 @@
   掉线按 30s → 30min 退避重试
 - **本地验证码**：62×25 的 CNN（19 万参数）跑在片内，不联网也能认；每一位置信度低于 0.90
   就换一张图（取图不消耗登录次数）
-- **电子价签**：BLE 直驱 296×128 三色墨水屏，每天推一次日期 / 日历 / 天气，含日出日落；可上传自定义图片（整屏/左半/右半）
+- **电子价签**：BLE 直驱 296×128 三色墨水屏，每天推一次日期 / 日历 / 天气，含日出日落
 - **网页后台**：USB 连上后浏览器里看屏幕、按键、改配置、拉日志、OTA 升级
 - **屏幕界面**：状态 / 信息 / 日历 / 价签 / 系统 / 对时 / 诊断（板载日志）
 - **外观自定义**：11 套配色（含 6 套二次元）+ 自定义背景/强调色，边框 · 角标图标 · 角标文字
@@ -72,7 +72,7 @@ python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0xC10000 model_q.
 **不想装 IDF**：直接下 Release 里的整片镜像，一步烧完（占位符配置，不含真实账号）：
 
 ```bash
-python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.10.2-full.bin
+python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.11.0-full.bin
 ```
 
 烧完用 USB 网页后台填 WiFi / 宽带账号 / 门户地址即可，不需要联网也能填。
@@ -81,7 +81,7 @@ python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.1
 **网页后台怎么开**：Windows 双击 `web\启动网页.cmd`（免安装），其他系统
 `python web/serve.py` 后打开 `http://127.0.0.1:8765`。见 [web/README.md](web/README.md)。
 
-> 不想 clone 整个仓库：Release 里有单独的 **`yingwang-web-tool-v2.10.2.zip`**，
+> 不想 clone 整个仓库：Release 里有单独的 **`yingwang-web-tool-v2.11.0.zip`**，
 > 解压后双击 `启动网页.cmd` 就能用。
 
 门户地址、AC IP、校园网 SSID **都可以在网页后台或串口里改**（`SET portal_base=...`），

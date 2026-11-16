@@ -3238,8 +3238,6 @@ void app_main(void)
     bsp_deco_set(cfg.deco_border, cfg.deco_icon, cfg.deco_tag);
     /* 墨水屏界面：0 选项 = 旧配置，用默认全开 */
     esl_ble_set_ui(cfg.esl_layout, cfg.esl_opts ? cfg.esl_opts : 0x0F, cfg.esl_text);
-    esl_ble_img_init();                      /* 自定义价签图片（storage 0xA0000） */
-    esl_ble_set_img_mode(cfg.esl_img_mode);
     /* 主题昼夜 / 背景轮换：运行时直接读 config（下面 apply_* 里读） */
 
     usb_console_init();                      /* USB 串口网页（Web Serial）命令行 */

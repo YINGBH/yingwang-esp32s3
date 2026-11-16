@@ -67,8 +67,6 @@ static const char *TAG = "usbcli";
 /* SHOT/KEY 是产品功能（网页看屏/远程按键）；PAGE/CAPIMG 只是开发调试用 */
 #define USB_DEBUG_CMDS 1
 
-static size_t img_off = 0;   /* EIMG 上传进度 */
-
 static void reply(const char *json)
 {
     printf("@%s\n", json);
@@ -231,8 +229,6 @@ static void send_status(void)
     cJSON_AddNumberToObject(c, "esl_layout", cfg.esl_layout);
     cJSON_AddNumberToObject(c, "esl_opts", cfg.esl_opts ? cfg.esl_opts : 0x0F);
     cJSON_AddStringToObject(c, "esl_text", cfg.esl_text);
-    cJSON_AddNumberToObject(c, "esl_img", cfg.esl_img_mode);
-    cJSON_AddBoolToObject(c, "esl_has_img", esl_ble_has_img());
     /* 站点参数：门户地址 / AC IP / 校园网 SSID，网页后台用这三项回填输入框 */
     cJSON_AddStringToObject(c, "portal_base", cfg.portal_base);
     cJSON_AddStringToObject(c, "portal_ac", cfg.portal_ac_ip);
@@ -435,13 +431,6 @@ static void do_set(char *kv)
             strlcpy(cfg.deco_tag, val, sizeof(cfg.deco_tag));
         }
         bsp_deco_set(cfg.deco_border, cfg.deco_icon, cfg.deco_tag);
-        theme_changed = true;
-    } else if (strcmp(key, "esl_img") == 0) {
-        int v = atoi(val);
-        if (v < 0) v = 0;
-        if (v > 3) v = 3;
-        cfg.esl_img_mode = (uint8_t) v;
-        esl_ble_set_img_mode(cfg.esl_img_mode);
         theme_changed = true;
     } else if (strcmp(key, "esl_layout") == 0) {
         cfg.esl_layout = (uint8_t) ((atoi(val) != 0) ? 1 : 0);
@@ -772,60 +761,6 @@ static void cli_task(void *arg)
                 reply_ok();
             } else {
                 reply_err(esp_err_to_name(e));
-            }
-        } else if (strncmp(line, "EIMG", 4) == 0) {
-            /* 自定义墨水屏图片：EIMG B 开始 / EIMG D <hex> 数据 / EIMG E 完成 */
-            /* 注意：这里绝对不能 break —— 会跳出命令循环，任务返回触发 abort */
-            char sub = (line[4] == ' ') ? line[5] : '\0';
-            if (sub == '\0') {
-                reply_err("用法: EIMG B | EIMG D <hex> | EIMG E");
-            }
-            if (sub == 'B') {
-                img_off = 0;                 /* 每次开始都从头计 */
-                esp_err_t e = esl_ble_img_begin();
-                if (e == ESP_OK) {
-                    reply_ok();
-                } else {
-                    reply_err(esp_err_to_name(e));
-                }
-            } else if (sub == 'D') {
-                /* 格式：EIMG D <偏移> <hex> —— 带偏移，重传同一条不会重复累加 */
-                const char *p = line + 7;
-                size_t off = (size_t) strtoul(p, (char **) &p, 10);
-                while (*p == ' ') {
-                    p++;
-                }
-                size_t hl = strlen(p);
-                static uint8_t buf[512];
-                size_t n = 0;
-                for (size_t i = 0; i + 1 < hl && n < sizeof(buf); i += 2) {
-                    char b[3] = { p[i], p[i + 1], 0 };
-                    buf[n++] = (uint8_t) strtoul(b, NULL, 16);
-                }
-                esp_err_t e = esl_ble_img_chunk(buf, n, off);
-                if (e == ESP_OK) {
-                    img_off = off + n;        /* 直接赋值，重传也安全 */
-                    printf("@{\"ok\":true,\"n\":%u}\n", (unsigned) n);
-                    fflush(stdout);
-                } else {
-                    printf("@{\"ok\":false,\"err\":\"%s\",\"got\":%u}\n",
-                           esp_err_to_name(e), (unsigned) img_off);
-                    fflush(stdout);
-                }
-            } else if (sub == 'Q') {
-                printf("@{\"ok\":true,\"got\":%u,\"crc\":\"%08X\"}\n",
-                       (unsigned) img_off, (unsigned) esl_ble_img_crc());
-                fflush(stdout);
-            } else if (sub == 'E') {
-                esp_err_t e = esl_ble_img_finish(img_off);
-                printf("@{\"ok\":%s,\"got\":%u}\n",
-                       (e == ESP_OK) ? "true" : "false", (unsigned) img_off);
-                fflush(stdout);
-                if (e == ESP_OK) {
-                    img_off = 0;
-                }
-            } else {
-                reply_err("unknown_eimg");
             }
         } else if (strcmp(line, "HITO") == 0) {
             /* 联网拉一句「一言」：HTTP 吃栈，丢后台任务 */

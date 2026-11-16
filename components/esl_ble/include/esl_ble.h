@@ -64,16 +64,6 @@ void esl_ble_release(void);
 /** 墨水屏界面自定义：布局 0 标准 / 1 大字时间；opts 见 ESL_OPT_* */
 void esl_ble_set_ui(uint8_t layout, uint8_t opts, const char *text);
 
-/* ---- 墨水屏自定义图片（296x128，黑/红双 plane，9472 字节）---- */
-esp_err_t esl_ble_img_init(void);
-esp_err_t esl_ble_img_begin(void);
-esp_err_t esl_ble_img_chunk(const uint8_t *data, size_t len, size_t offset);
-esp_err_t esl_ble_img_finish(size_t total);
-esp_err_t esl_ble_img_erase(void);
-bool esl_ble_has_img(void);
-void esl_ble_set_img_mode(uint8_t mode);
-uint8_t esl_ble_img_mode(void);
-uint32_t esl_ble_img_crc(void);
 
 uint8_t esl_ble_ui_layout(void);
 uint8_t esl_ble_ui_opts(void);
