@@ -168,6 +168,13 @@
     <span style="font-size:12px;opacity:.65">满电能用几小时（0=默认 2）</span>
   </div>
   <div class="row">
+    <label>电池下探测间隔</label>
+    <input type="number" id="probe_sec" min="10" max="3600" placeholder="秒，默认 120">
+    <label style="width:auto;flex:0 0 auto;font-weight:400">
+      <input type="checkbox" id="probe_plugged" style="width:20px;height:20px"> 插电也用
+    </label>
+  </div>
+  <div class="row">
     <label>低电量提醒</label>
     <input type="number" id="batt_low" min="0" max="240" placeholder="分钟，默认 15">
     <label style="width:auto;flex:0 0 auto;font-weight:400">
@@ -446,6 +453,8 @@ function renderStatus(o) {
   }
   if (document.activeElement !== $('esl_text')) $('esl_text').value = c.esl_text || '';
   if (document.activeElement !== $('batt_est')) $('batt_est').value = c.batt_est || '';
+  if (document.activeElement !== $('probe_sec')) $('probe_sec').value = c.probe_sec || '';
+  $('probe_plugged').checked = (c.probe_plugged ?? 0) != 0;
   if (document.activeElement !== $('batt_low')) $('batt_low').value = c.batt_low || '';
   $('batt_keep').checked = (c.batt_keep ?? 0) != 0;
   $('theme_auto').checked = (c.theme_auto ?? 0) != 0;
@@ -827,6 +836,8 @@ $('btnSave').onclick = async () => {
     ($('esl_sun').checked ? 4 : 0) | ($('esl_brand').checked ? 8 : 0))]);
   kv.push(['esl_text', $('esl_text').value.trim() || '-']);
   kv.push(['batt_est', $('batt_est').value || '0']);
+  kv.push(['probe_sec', $('probe_sec').value || '0']);
+  kv.push(['probe_plugged', $('probe_plugged').checked ? 1 : 0]);
   kv.push(['batt_low', $('batt_low').value || '0']);
   kv.push(['batt_keep', $('batt_keep').checked ? 1 : 0]);
     }

@@ -6,7 +6,7 @@
 
 > 截图里都是占位值（`HomeWiFi` / `13800000000` / `10.0.0.1`），不是某台设备的真实配置。
 
-> 不想 clone 整个仓库？Release 里有单独的 `yingwang-web-tool-v2.13.0.zip`，
+> 不想 clone 整个仓库？Release 里有单独的 `yingwang-web-tool-v2.14.0.zip`，
 > 解压（得到下面这几个文件）后双击 `启动网页.cmd` 即可。
 
 ## 为什么需要它

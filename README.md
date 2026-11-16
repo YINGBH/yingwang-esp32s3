@@ -72,7 +72,7 @@ python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0xC10000 model_q.
 **不想装 IDF**：直接下 Release 里的整片镜像，一步烧完（占位符配置，不含真实账号）：
 
 ```bash
-python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.13.0-full.bin
+python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.14.0-full.bin
 ```
 
 烧完用 USB 网页后台填 WiFi / 宽带账号 / 门户地址即可，不需要联网也能填。
@@ -81,7 +81,7 @@ python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.1
 **网页后台怎么开**：Windows 双击 `web\启动网页.cmd`（免安装），其他系统
 `python web/serve.py` 后打开 `http://127.0.0.1:8765`。见 [web/README.md](web/README.md)。
 
-> 不想 clone 整个仓库：Release 里有单独的 **`yingwang-web-tool-v2.13.0.zip`**，
+> 不想 clone 整个仓库：Release 里有单独的 **`yingwang-web-tool-v2.14.0.zip`**，
 > 解压后双击 `启动网页.cmd` 就能用。
 
 门户地址、AC IP、校园网 SSID **都可以在网页后台或串口里改**（`SET portal_base=...`），

@@ -289,6 +289,22 @@ static bool batt_estimate_text(char *out, size_t cap)
     return true;
 }
 
+/* 探测间隔：电池供电时用配置的 probe_sec（默认 120 秒，省电）；
+   插电时仍用 APP_CHECK_INTERVAL_S（15 秒），保证网页/推送响应快。 */
+static int check_interval_s(void)
+{
+    const app_settings_t *c = config_store_get();
+    int plugged_too = c->probe_plugged;
+    bool charging = bsp_power_is_charging();
+    if (!charging || plugged_too) {
+        int sec = c->probe_sec ? c->probe_sec : 120;
+        if (sec >= 10) {
+            return sec;
+        }
+    }
+    return APP_CHECK_INTERVAL_S;
+}
+
 /* 低电量：剩余时间 ≤ batt_low_min（默认 15 分钟）且没在充电 */
 static bool batt_low_active(void)
 {
@@ -3794,7 +3810,7 @@ void app_main(void)
                     ESP_LOGI(TAG, "已预渲染墨水屏信息页（首次联网）");
                 }
             }
-            vTaskDelay(pdMS_TO_TICKS(APP_CHECK_INTERVAL_S * 1000));
+            vTaskDelay(pdMS_TO_TICKS(check_interval_s() * 1000));
             continue;
         }
 
@@ -3833,7 +3849,7 @@ void app_main(void)
         if (login_backoff_active()) {
             /* 退避中：只显示状态，不再提交，等退避时间到 */
             set_state(ST_ERROR, "登录失败，退避中");
-            vTaskDelay(pdMS_TO_TICKS(APP_CHECK_INTERVAL_S * 1000));
+            vTaskDelay(pdMS_TO_TICKS(check_interval_s() * 1000));
             continue;
         }
         set_state(ST_LOGIN, w.wlan_ac_ip);
@@ -3860,7 +3876,7 @@ void app_main(void)
             fail_streak = 0;
             set_state(ST_ONLINE, wifi_sta_ip());
             time_weather_refresh();     /* 刚联网，顺手更新天气 */
-            vTaskDelay(pdMS_TO_TICKS(APP_CHECK_INTERVAL_S * 1000));
+            vTaskDelay(pdMS_TO_TICKS(check_interval_s() * 1000));
         } else {
             fail_streak++;
             s_was_online = false;

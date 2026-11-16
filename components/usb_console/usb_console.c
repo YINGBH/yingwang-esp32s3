@@ -226,6 +226,8 @@ static void send_status(void)
     cJSON_AddNumberToObject(c, "theme_night", cfg.theme_night);
     cJSON_AddNumberToObject(c, "bg_rotate", cfg.bg_rotate);
     cJSON_AddNumberToObject(c, "bg_slot", bg_slot());
+    cJSON_AddNumberToObject(c, "probe_sec", cfg.probe_sec);
+    cJSON_AddNumberToObject(c, "probe_plugged", cfg.probe_plugged);
     cJSON_AddNumberToObject(c, "batt_low", cfg.batt_low_min);
     cJSON_AddNumberToObject(c, "batt_keep", cfg.batt_low_keepon);
     cJSON_AddNumberToObject(c, "batt_used", cfg.batt_used_min);
@@ -436,6 +438,13 @@ static void do_set(char *kv)
         }
         bsp_deco_set(cfg.deco_border, cfg.deco_icon, cfg.deco_tag);
         theme_changed = true;
+    } else if (strcmp(key, "probe_sec") == 0) {
+        int v = atoi(val);
+        if (v < 0) v = 0;
+        if (v > 3600) v = 3600;
+        cfg.probe_sec = (uint16_t) v;
+    } else if (strcmp(key, "probe_plugged") == 0) {
+        cfg.probe_plugged = (uint8_t) (atoi(val) != 0);
     } else if (strcmp(key, "batt_low") == 0) {
         int v = atoi(val);
         if (v < 0) v = 0;

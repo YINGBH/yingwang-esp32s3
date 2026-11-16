@@ -83,6 +83,8 @@ typedef struct {
        插在中间会让旧配置 blob 的偏移全部错位（踩过）。 */
     uint8_t  batt_low_min;    /* 剩余多少分钟算低电量，0 = 默认 15 */
     uint8_t  batt_low_keepon; /* 1 = 低电量时保持常亮（不自动息屏） */
+    uint16_t probe_sec;       /* 电池供电时的探测间隔（秒），0 = 默认 120 */
+    uint8_t  probe_plugged;   /* 1 = 插电时也用 probe_sec（默认 0：插电用 15 秒） */
 } app_settings_t;
 
 /**
