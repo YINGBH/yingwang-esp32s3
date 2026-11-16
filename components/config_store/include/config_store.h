@@ -75,6 +75,7 @@ typedef struct {
     uint8_t  esl_layout;
     uint8_t  esl_opts;
     char     esl_text[48];    /* 自定义一行字 */
+    uint8_t  esl_img_mode;    /* 0 关 1 整屏图片 2 左半图片 3 右半图片 */
 } app_settings_t;
 
 /**

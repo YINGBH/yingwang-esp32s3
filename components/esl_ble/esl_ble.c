@@ -1,4 +1,4 @@
-﻿/*
+/*
  * ESP32-S3 用 BLE 驱动盒马墨水价签（HINK-E029A14-A1 / 296x128 / 黑白红）
  *
  * 信息页排版（与电脑端 esl_page_v3.py 一致）：
@@ -27,6 +27,8 @@
 #include "esp_bt.h"
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
+#include "esp_partition.h"
+#include "esp_rom_crc.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -770,6 +772,181 @@ void esl_ble_draw_test_pattern(void)
     text("ESL TEST PAGE", 84, 96, INK_BLACK);
 }
 
+/* ---------------- 自定义图片（296x128 双 plane） ---------------- */
+#define ESL_IMG_OFF    0xA0000      /* storage 分区里：样本区之后空着 3MB */
+#define ESL_IMG_HDR    0x1000
+#define ESL_IMG_MAGIC  0x474D4945u  /* "EIMG" */
+#define ESL_IMG_BYTES  (PLANE * 2)  /* 9472 */
+#define ESL_IMG_SPAN   0x8000      /* 抹除范围 32KB（8 个扇区，必须是 4KB 的倍数） */
+
+typedef struct {
+    uint32_t magic;
+    uint16_t width;
+    uint16_t height;
+    uint32_t bytes;
+} esl_img_hdr_t;
+
+static uint8_t *s_user_img = NULL;   /* PSRAM：用户上传的位图 */
+static bool s_has_user_img = false;
+static uint8_t s_img_mode = 0;       /* 0 关 1 整屏 2 左半 3 右半 */
+
+static const esp_partition_t *img_part(void)
+{
+    return esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+                                    ESP_PARTITION_SUBTYPE_ANY, "storage");
+}
+
+bool esl_ble_has_img(void)
+{
+    return s_has_user_img;
+}
+
+void esl_ble_set_img_mode(uint8_t mode)
+{
+    s_img_mode = (mode > 3) ? 0 : mode;
+    ESP_LOGI(TAG, "墨水屏图片模式：%d（%s）", s_img_mode,
+             esl_ble_has_img() ? "有图" : "没图");
+}
+
+uint8_t esl_ble_img_mode(void)
+{
+    return s_img_mode;
+}
+
+esp_err_t esl_ble_img_init(void)
+{
+    const esp_partition_t *p = img_part();
+    if (p == NULL) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    if (s_user_img == NULL) {
+        s_user_img = heap_caps_malloc(ESL_IMG_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (s_user_img == NULL) {
+            s_user_img = heap_caps_malloc(ESL_IMG_BYTES, MALLOC_CAP_8BIT);
+        }
+        if (s_user_img == NULL) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    esl_img_hdr_t hdr;
+    esp_err_t err = esp_partition_read(p, ESL_IMG_OFF, &hdr, sizeof(hdr));
+    if (err != ESP_OK) {
+        return err;
+    }
+    ESP_LOGI(TAG, "图片头部：magic=0x%08X w=%u h=%u bytes=%u",
+             (unsigned) hdr.magic, hdr.width, hdr.height, (unsigned) hdr.bytes);
+    if (hdr.magic != ESL_IMG_MAGIC || hdr.bytes != ESL_IMG_BYTES) {
+        /* 没有旧图：缓冲留着（上传要用），但标记成"没图" */
+        memset(s_user_img, 0, ESL_IMG_BYTES);
+        s_has_user_img = false;
+        ESP_LOGI(TAG, "没有自定义图片（缓冲已就绪）");
+        return ESP_OK;
+    }
+    err = esp_partition_read(p, ESL_IMG_OFF + ESL_IMG_HDR, s_user_img, ESL_IMG_BYTES);
+    if (err != ESP_OK) {
+        memset(s_user_img, 0, ESL_IMG_BYTES);
+        s_has_user_img = false;
+        return err;
+    }
+    s_has_user_img = true;
+    ESP_LOGI(TAG, "已加载自定义图片（%d 字节）", ESL_IMG_BYTES);
+    return ESP_OK;
+}
+
+esp_err_t esl_ble_img_begin(void)
+{
+    const esp_partition_t *p = img_part();
+    if (p == NULL) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    if (s_user_img == NULL && esl_ble_img_init() != ESP_OK) {
+        return ESP_ERR_NO_MEM;
+    }
+    return esp_partition_erase_range(p, ESL_IMG_OFF, ESL_IMG_SPAN);
+}
+
+esp_err_t esl_ble_img_chunk(const uint8_t *data, size_t len, size_t offset)
+{
+    const esp_partition_t *p = img_part();
+    if (p == NULL || s_user_img == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (offset + len > ESL_IMG_BYTES) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    esp_err_t err = esp_partition_write(p, ESL_IMG_OFF + ESL_IMG_HDR + offset, data, len);
+    if (err == ESP_OK) {
+        memcpy(s_user_img + offset, data, len);
+    }
+    return err;
+}
+
+esp_err_t esl_ble_img_finish(size_t total)
+{
+    const esp_partition_t *p = img_part();
+    if (p == NULL || s_user_img == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (total != ESL_IMG_BYTES) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    esl_img_hdr_t hdr = {
+        .magic = ESL_IMG_MAGIC,
+        .width = ESL_W,
+        .height = ESL_H,
+        .bytes = ESL_IMG_BYTES,
+    };
+    esp_err_t err = esp_partition_write(p, ESL_IMG_OFF, &hdr, sizeof(hdr));
+    if (err == ESP_OK) {
+        s_has_user_img = true;
+        ESP_LOGI(TAG, "自定义图片已保存");
+    }
+    return err;
+}
+
+/* 当前图片数据的 CRC32（用来校验上传是否完整） */
+uint32_t esl_ble_img_crc(void)
+{
+    if (s_user_img == NULL || !s_has_user_img) {
+        return 0;
+    }
+    return (uint32_t) esp_rom_crc32_le(0, s_user_img, ESL_IMG_BYTES);
+}
+
+esp_err_t esl_ble_img_erase(void)
+{
+    const esp_partition_t *p = img_part();
+    if (p == NULL) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    esp_err_t err = esp_partition_erase_range(p, ESL_IMG_OFF, ESL_IMG_SPAN);
+    if (s_user_img) {
+        memset(s_user_img, 0, ESL_IMG_BYTES);
+    }
+    s_has_user_img = false;
+    s_img_mode = 0;
+    return err;
+}
+
+/* 把用户图片的某一列区间贴到画布上（x0..x1，含端点） */
+static void blit_user(int x0, int x1)
+{
+    if (s_user_img == NULL || !s_has_user_img) {
+        return;
+    }
+    if (x0 < 0) {
+        x0 = 0;
+    }
+    if (x1 >= ESL_W) {
+        x1 = ESL_W - 1;
+    }
+    for (int x = x0; x <= x1; x++) {
+        int col = col_of(x);
+        memcpy(s_img + col * ROW_BYTES, s_user_img + col * ROW_BYTES, ROW_BYTES);
+        memcpy(s_img + PLANE + col * ROW_BYTES, s_user_img + PLANE + col * ROW_BYTES, ROW_BYTES);
+    }
+}
+
 /* ---------------- 墨水屏界面自定义 ---------------- */
 #define ESL_OPT_CAL     0x01   /* 日历 */
 #define ESL_OPT_WEATHER 0x02   /* 天气面板 */
@@ -806,28 +983,43 @@ const char *esl_ble_ui_text(void)
     return s_custom;
 }
 
-/* 大字时间（16px 字模放大 2 倍） */
-static void draw_big_time(int y)
+/* 大字日期（16px 字模放大 2 倍）
+   价签一天只刷一次，显示时间会一直停在推送那一刻 → 改成日期更实在 */
+static void draw_big_date(int y)
 {
     time_weather_t tw;
     memset(&tw, 0, sizeof(tw));
     time_weather_get(&tw);
-    char tb[8];
+    char tb[16];
     if (tw.time_valid) {
-        snprintf(tb, sizeof(tb), "%02d:%02d", tw.hour, tw.minute);
+        snprintf(tb, sizeof(tb), "%d/%d", tw.month, tw.day);
     } else {
-        snprintf(tb, sizeof(tb), "--:--");
+        snprintf(tb, sizeof(tb), "--/--");
     }
     int w = 0;
     for (const char *p = tb; *p; p++) {
         w += 16;                     /* 放大 2 倍后 ASCII 16px 宽 */
     }
     text_big(tb, (ESL_W - w) / 2, y, INK_BLACK, 2);
+
+    /* 日期下面补一行星期，信息更完整 */
+    if (tw.time_valid) {
+        static const char *WD[] = { "日", "一", "二", "三", "四", "五", "六" };
+        char wd[16];
+        snprintf(wd, sizeof(wd), "星期%s", WD[(tw.weekday % 7 + 7) % 7]);
+        text12(wd, (ESL_W - text12_w(wd)) / 2, y + 34, INK_BLACK);
+    }
 }
 
 static void draw_info(void)
 {
     buf_clear();
+
+    /* 整屏图片模式：只画状态栏（电量/认证），其余交给图片 */
+    if (s_img_mode == 1 && s_has_user_img) {
+        blit_user(0, ESL_W - 1);
+        return;
+    }
 
     time_weather_t tw;
     memset(&tw, 0, sizeof(tw));
@@ -923,17 +1115,17 @@ static void draw_info(void)
     }
 
     /* 大字时间布局：时间顶替日历区 */
-    if (s_layout == 1) {
-        draw_big_time(44);
+    if (s_layout == 1 && s_img_mode != 2 && s_img_mode != 3) {
+        draw_big_date(40);
         if (s_custom[0]) {
             int cw = text12_w(s_custom);
-            text12(s_custom, (ESL_W - cw) / 2, 84, INK_BLACK);
+            text12(s_custom, (ESL_W - cw) / 2, 88, INK_BLACK);
         }
         if (s_opts & ESL_OPT_WEATHER) {
-            if ((s_opts & ESL_OPT_WEATHER) && tw.weather_valid) {
+            if ((s_opts & ESL_OPT_WEATHER) && tw.weather_valid && s_img_mode != 3) {
                 snprintf(buf, sizeof(buf), "%dC HUM %d", tw.temp_c, tw.humidity);
                 int w = text12_w(buf);
-                text12(buf, (ESL_W - w) / 2, 102, INK_BLACK);
+                text12(buf, (ESL_W - w) / 2, 104, INK_BLACK);
             }
         }
         if ((s_opts & ESL_OPT_SUN) && tw.daily_valid && tw.sunrise[0]) {
@@ -944,9 +1136,16 @@ static void draw_info(void)
         return;
     }
 
+    /* 左半图片模式：左 148px 用图片，右边照常画天气卡片 */
+    if (s_img_mode == 2 && s_has_user_img) {
+        blit_user(0, 148);
+    } else if (s_img_mode == 3 && s_has_user_img) {
+        blit_user(150, ESL_W - 1);
+    }
+
     /* ---------------- 日历 ---------------- */
     const int cal_x = 2, col_w = 24, y0 = 42;
-    if (s_opts & ESL_OPT_CAL) {
+    if ((s_opts & ESL_OPT_CAL) && !(s_img_mode == 2)) {
 
     static const char *WD_AB[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
     for (int i = 0; i < 7; i++) {
@@ -1000,6 +1199,11 @@ static void draw_info(void)
        竖分隔线 + 图标(32) + 温度(16px) + 天气(12px) + 湿度/明天(12px)
        注意：字库只有 ASCII + 汉字，没有 ° 符号，温度写成 "14C" */
     {
+        /* 右半图片模式：右边整块是图，天气面板不能盖上去 */
+        if (s_img_mode == 3) {
+            return;
+        }
+
         const int px0 = 172;              /* 面板左边界（日历 7 列 x24 到 170） */
         const int py0 = 42;
         const int pw = ESL_W - px0;   /* 124 */       /* 面板宽度 124 */
