@@ -289,6 +289,55 @@ static bool batt_estimate_text(char *out, size_t cap)
     return true;
 }
 
+/* 低电量：剩余时间 ≤ batt_low_min（默认 15 分钟）且没在充电 */
+static bool batt_low_active(void)
+{
+    if (bsp_power_is_charging()) {
+        return false;
+    }
+    const app_settings_t *c = config_store_get();
+    int32_t th_min = c->batt_low_min ? c->batt_low_min : 15;
+    int32_t total_h = c->batt_est_hours ? c->batt_est_hours : BATT_DEFAULT_HOURS;
+    int32_t used = s_batt_used_s < 0 ? 0 : s_batt_used_s;
+    int32_t left = total_h * 3600 - used;
+    return left <= th_min * 60;
+}
+
+static bool    s_low_warned = false;      /* 已经提醒过（避免反复响） */
+static int64_t s_low_beep_end_ms = 0;     /* 这次响铃到什么时候 */
+
+/* 进入低电量时响几声（600ms），离开时复位标志 */
+static void batt_low_tick(void)
+{
+    const app_settings_t *c = config_store_get();
+    int64_t now = esp_timer_get_time() / 1000;
+
+    if (s_low_beep_end_ms && now > s_low_beep_end_ms) {
+        beep_alarm_stop();
+        s_low_beep_end_ms = 0;
+    }
+
+    bool low = batt_low_active();
+    if (!low) {
+        s_low_warned = false;
+        return;
+    }
+    if (!s_low_warned) {
+        s_low_warned = true;
+        beep_alarm_start();
+        s_low_beep_end_ms = now + 600;
+        ESP_LOGW(TAG, "低电量：预计剩余不足 %d 分钟", c->batt_low_min ? c->batt_low_min : 15);
+    }
+
+    /* 低电量保持常亮：把空闲计时器顶上，别熄屏 */
+    if (c->batt_low_keepon) {
+        if (s_screen_off) {
+            pm_wake();
+        }
+        s_last_input_ms = now_ms();
+    }
+}
+
 static void draw_header(const char *title, int state)
 {
     uint16_t color;
@@ -309,7 +358,8 @@ static void draw_header(const char *title, int state)
         int w = text_w(bat, 1);
         int tw = text_w(title, 1);
         if (w + tw + reserve + 20 < 240) {   /* 太挤就不画，别压住标题 */
-            bsp_display_text(240 - 6 - reserve - w, 4, bat, COLOR_BLACK, color, 1);
+            uint16_t txt = batt_low_active() ? COLOR_RED : COLOR_BLACK;
+            bsp_display_text(240 - 6 - reserve - w, 4, bat, txt, color, 1);
         }
     }
 }
@@ -3620,6 +3670,7 @@ void app_main(void)
         }
 
         batt_model_tick();
+        batt_low_tick();
 
         portal_probe_t probe = portal_probe(&w);
 

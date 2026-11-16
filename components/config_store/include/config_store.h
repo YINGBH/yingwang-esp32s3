@@ -1,4 +1,4 @@
-﻿/*
+/*
  * 配置持久化（NVS）
  *
  * 之前 WiFi 密码和宽带账号是编译期常量，改一次就得重新编译烧录。
@@ -76,8 +76,13 @@ typedef struct {
     uint8_t  esl_opts;
     char     esl_text[48];    /* 自定义一行字 */
     uint16_t batt_used_min;   /* 电池供电累计分钟（充电时回补），续航估算用 */
-    uint8_t  batt_est_hours;  /* 满电预计能用多少小时，0 = 用默认 24 */
+    uint8_t  batt_est_hours;  /* 满电预计能用多少小时，0 = 默认 2（200mAh） */
     uint8_t  esl_img_mode;    /* 已废弃：自定义图片已移除，字段保留只为不破坏旧 blob 布局 */
+
+    /* ↓ 新字段只能往这里追加，绝不能插到上面去：
+       插在中间会让旧配置 blob 的偏移全部错位（踩过）。 */
+    uint8_t  batt_low_min;    /* 剩余多少分钟算低电量，0 = 默认 15 */
+    uint8_t  batt_low_keepon; /* 1 = 低电量时保持常亮（不自动息屏） */
 } app_settings_t;
 
 /**

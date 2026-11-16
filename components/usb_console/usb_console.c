@@ -226,6 +226,8 @@ static void send_status(void)
     cJSON_AddNumberToObject(c, "theme_night", cfg.theme_night);
     cJSON_AddNumberToObject(c, "bg_rotate", cfg.bg_rotate);
     cJSON_AddNumberToObject(c, "bg_slot", bg_slot());
+    cJSON_AddNumberToObject(c, "batt_low", cfg.batt_low_min);
+    cJSON_AddNumberToObject(c, "batt_keep", cfg.batt_low_keepon);
     cJSON_AddNumberToObject(c, "batt_used", cfg.batt_used_min);
     cJSON_AddNumberToObject(c, "batt_est", cfg.batt_est_hours);
     cJSON_AddNumberToObject(c, "esl_layout", cfg.esl_layout);
@@ -434,6 +436,13 @@ static void do_set(char *kv)
         }
         bsp_deco_set(cfg.deco_border, cfg.deco_icon, cfg.deco_tag);
         theme_changed = true;
+    } else if (strcmp(key, "batt_low") == 0) {
+        int v = atoi(val);
+        if (v < 0) v = 0;
+        if (v > 240) v = 240;
+        cfg.batt_low_min = (uint8_t) v;
+    } else if (strcmp(key, "batt_keep") == 0) {
+        cfg.batt_low_keepon = (uint8_t) (atoi(val) != 0);
     } else if (strcmp(key, "batt_est") == 0) {
         int v = atoi(val);
         if (v < 0) v = 0;

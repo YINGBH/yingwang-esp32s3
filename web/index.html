@@ -167,6 +167,13 @@
     <input type="number" id="batt_est" min="1" max="200" placeholder="小时，默认 2">
     <span style="font-size:12px;opacity:.65">满电能用几小时（0=默认 2）</span>
   </div>
+  <div class="row">
+    <label>低电量提醒</label>
+    <input type="number" id="batt_low" min="0" max="240" placeholder="分钟，默认 15">
+    <label style="width:auto;flex:0 0 auto;font-weight:400">
+      <input type="checkbox" id="batt_keep" style="width:20px;height:20px"> 保持常亮
+    </label>
+  </div>
   <div class="row"><label>昼夜自动换主题</label><input type="checkbox" id="theme_auto" style="width:22px;height:22px;flex:0 0 auto"></div>
   <div class="row"><label>白天 / 夜里</label>
     <select id="theme_day" style="flex:1;min-width:0;padding:6px;border-radius:8px"></select>
@@ -439,6 +446,8 @@ function renderStatus(o) {
   }
   if (document.activeElement !== $('esl_text')) $('esl_text').value = c.esl_text || '';
   if (document.activeElement !== $('batt_est')) $('batt_est').value = c.batt_est || '';
+  if (document.activeElement !== $('batt_low')) $('batt_low').value = c.batt_low || '';
+  $('batt_keep').checked = (c.batt_keep ?? 0) != 0;
   $('theme_auto').checked = (c.theme_auto ?? 0) != 0;
   if (document.activeElement !== $('theme_day')) $('theme_day').value = String(c.theme_day ?? 0);
   if (document.activeElement !== $('theme_night')) $('theme_night').value = String(c.theme_night ?? 1);
@@ -818,6 +827,8 @@ $('btnSave').onclick = async () => {
     ($('esl_sun').checked ? 4 : 0) | ($('esl_brand').checked ? 8 : 0))]);
   kv.push(['esl_text', $('esl_text').value.trim() || '-']);
   kv.push(['batt_est', $('batt_est').value || '0']);
+  kv.push(['batt_low', $('batt_low').value || '0']);
+  kv.push(['batt_keep', $('batt_keep').checked ? 1 : 0]);
     }
   }
   // 逐条下发并确认：以前一口气全发、不检查回复，某一条被板子拒了（比如 unknown_key）
