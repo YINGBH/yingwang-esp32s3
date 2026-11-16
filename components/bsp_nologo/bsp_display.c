@@ -697,27 +697,6 @@ static void draw_icon16(int x, int y, int which, uint16_t color)
     }
 }
 
-static bool s_grid = false;
-
-void bsp_deco_set_grid(bool on)
-{
-    s_grid = on;
-}
-
-void bsp_deco_draw_grid(void)
-{
-    if (!s_grid) {
-        return;
-    }
-    /* 24px 网格，用次要文字色画 1px 线：比 panel 色明显，又不抢内容 */
-    for (int x = 0; x < 240; x += 24) {
-        bsp_display_fill_rect(x, 0, 1, 240, TH_DIM);
-    }
-    for (int y = 0; y < 240; y += 24) {
-        bsp_display_fill_rect(0, y, 240, 1, TH_DIM);
-    }
-}
-
 void bsp_deco_draw(void)
 {
     const int W = 240, H = 240;
@@ -758,9 +737,9 @@ void bsp_deco_draw(void)
         draw_icon16(W - 24, 30, s_deco.icon, TH_ACCENT);
     }
 
-    /* 左下角文字 */
+    /* 角标文字：放标题栏右侧（放底部会压住提示行） */
     if (s_deco.tag[0]) {
         int tw = bsp_display_text_width(s_deco.tag, 1);
-        bsp_display_text(W - 8 - tw, H - 22, s_deco.tag, TH_ACCENT, -1, 1);
+        bsp_display_text(W - 6 - tw, 4, s_deco.tag, TH_ACCENT, -1, 1);
     }
 }

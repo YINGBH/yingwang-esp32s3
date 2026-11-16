@@ -160,7 +160,6 @@
     <input type="text" id="esl_text" maxlength="16" placeholder="一行小字，如 今天也要加油（留空不显示）">
     <button id="btnHito" class="ghost" disabled title="联网拉一句一言（拉不到用内置句库）">拉一句</button>
   </div>
-  <div class="row"><label>网格背景</label><input type="checkbox" id="deco_grid" style="width:22px;height:22px;flex:0 0 auto"></div>
   <div class="row"><label>昼夜自动换主题</label><input type="checkbox" id="theme_auto" style="width:22px;height:22px;flex:0 0 auto"></div>
   <div class="row"><label>白天 / 夜里</label>
     <select id="theme_day" style="flex:1;padding:6px;border-radius:8px"></select>
@@ -423,7 +422,6 @@ function renderStatus(o) {
   if (document.activeElement !== $('deco_border')) $('deco_border').value = String(c.deco_border ?? 0);
   if (document.activeElement !== $('deco_icon')) $('deco_icon').value = String(c.deco_icon ?? 0);
   if (document.activeElement !== $('deco_tag')) $('deco_tag').value = c.deco_tag || '';
-  $('deco_grid').checked = (c.deco_grid ?? 0) != 0;
   if (document.activeElement !== $('esl_layout')) $('esl_layout').value = String(c.esl_layout ?? 0);
   {
     const o = c.esl_opts ?? 15;
@@ -802,7 +800,6 @@ $('btnSave').onclick = async () => {
   kv.push(['deco_border', $('deco_border').value]);
   kv.push(['deco_icon', $('deco_icon').value]);
   kv.push(['deco_tag', $('deco_tag').value.trim() || '-']);
-  kv.push(['deco_grid', $('deco_grid').checked ? 1 : 0]);
   kv.push(['theme_auto', $('theme_auto').checked ? 1 : 0]);
   kv.push(['theme_day', $('theme_day').value || '0']);
   kv.push(['theme_night', $('theme_night').value || '1']);

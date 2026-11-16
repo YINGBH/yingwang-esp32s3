@@ -255,7 +255,6 @@ static void render_status(void)
     char buf[48];
 
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
-    bsp_deco_draw_grid();
 
     /* 顶部色条 + 大号状态字 */
     bsp_display_fill_rect(0, 24, 240, 4, color);
@@ -323,7 +322,6 @@ static void render_model(void)
 {
     char buf[64];
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
-    bsp_deco_draw_grid();
 
     captcha_model_info_t mi;
     memset(&mi, 0, sizeof(mi));
@@ -360,7 +358,6 @@ static void render_model(void)
 static void render_esl(void)
 {
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
-    bsp_deco_draw_grid();
 
     char st[48];
 
@@ -436,7 +433,6 @@ static void render_info(void)
     time_weather_get(&tw);
 
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
-    bsp_deco_draw_grid();
 
     /* 时间：大号 */
     if (tw.time_valid) {
@@ -542,7 +538,6 @@ static void render_timer(void)
     int64_t left;
 
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
-    bsp_deco_draw_grid();
 
     if (s_timer_state == 1) {
         left = s_timer_end_ms - now;
@@ -589,7 +584,6 @@ static void render_stopwatch(void)
     int64_t now = esp_timer_get_time() / 1000;
 
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
-    bsp_deco_draw_grid();
 
     int64_t el = s_sw_base_ms + (s_sw_running ? (now - s_sw_start_ms) : 0);
     int sec = (int) (el / 1000);
@@ -682,7 +676,6 @@ static void render_alarms(void)
 {
     char buf[48];
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
-    bsp_deco_draw_grid();
 
     time_weather_t tw;
     time_weather_get(&tw);
@@ -859,7 +852,6 @@ static void render_sys(void)
 {
     char buf[64];
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
-    bsp_deco_draw_grid();
 
     app_settings_t cfg;
     config_store_snapshot(&cfg);
@@ -988,7 +980,6 @@ static int utf8_chunk(const char *s, int cols, char out[][64], int max_chunk)
 static void render_diag(void)
 {
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
-    bsp_deco_draw_grid();
 
     /* ---------- 标题栏 ---------- */
     bsp_display_fill_rect(0, 24, 240, 20, TH_PANEL);
@@ -1178,9 +1169,7 @@ static void render_clock(void)
             bg_drawn = true;
         } else {
             bsp_display_fill_rect(0, 0, 240, 240, TH_BG);
-            bsp_deco_draw_grid();
         }
-        bsp_deco_draw_grid();      /* 网格装饰（可关）：画在内容之前 */
         s_clock_full = false;
         s_clock_minute = -1;
         s_clock_second = -999;      /* 进页面强制整页画一次 */
@@ -1277,7 +1266,6 @@ static void render_calendar(void)
 
     if (!tw.time_valid || tw.year < 2024) {
         bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
-        bsp_deco_draw_grid();
         bsp_display_text_center(110, "对时后显示日历", TH_ACCENT, TH_BG, 1);
         return;
     }
@@ -1292,7 +1280,6 @@ static void render_calendar(void)
     char buf[64];
 
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
-    bsp_deco_draw_grid();
 
     /* 月份标题 + 农历月份 */
     lunar_date_t ld;
@@ -3249,7 +3236,6 @@ void app_main(void)
     }
     bsp_theme_ensure_readable(bg_has_image());
     bsp_deco_set(cfg.deco_border, cfg.deco_icon, cfg.deco_tag);
-    bsp_deco_set_grid(cfg.deco_grid != 0);
     /* 墨水屏界面：0 选项 = 旧配置，用默认全开 */
     esl_ble_set_ui(cfg.esl_layout, cfg.esl_opts ? cfg.esl_opts : 0x0F, cfg.esl_text);
     esl_ble_img_init();                      /* 自定义价签图片（storage 0xA0000） */

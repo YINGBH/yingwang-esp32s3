@@ -223,7 +223,6 @@ static void send_status(void)
     cJSON_AddNumberToObject(c, "deco_border", cfg.deco_border);
     cJSON_AddNumberToObject(c, "deco_icon", cfg.deco_icon);
     cJSON_AddStringToObject(c, "deco_tag", cfg.deco_tag);
-    cJSON_AddNumberToObject(c, "deco_grid", cfg.deco_grid);
     cJSON_AddNumberToObject(c, "theme_auto", cfg.theme_auto);
     cJSON_AddNumberToObject(c, "theme_day", cfg.theme_day);
     cJSON_AddNumberToObject(c, "theme_night", cfg.theme_night);
@@ -481,10 +480,6 @@ static void do_set(char *kv)
         cfg.bg_rotate = (uint8_t) v;
     } else if (strcmp(key, "bg_slot") == 0) {
         bg_set_slot(atoi(val));
-        theme_changed = true;
-    } else if (strcmp(key, "deco_grid") == 0) {
-        cfg.deco_grid = (uint8_t) (atoi(val) != 0);
-        bsp_deco_set_grid(cfg.deco_grid != 0);
         theme_changed = true;
     } else if (strcmp(key, "theme_bg") == 0 || strcmp(key, "theme_accent") == 0) {
         /* 自定义主题：接受 0xRRGGBB（网页的 <input type=color>）或 0xRRRRGGGGBBBB 的 RGB565 */
