@@ -6,7 +6,9 @@ cmake_minimum_required(VERSION 3.16)
 set(IDF_TARGET "esp32s3")
 
 # 正式版版本号（显示在系统页、串口 GET、固件文件名里）
-set(PROJECT_VER "2.14.0")
+# 唯一来源是仓库根目录的 VERSION 文件，改版本号只改那一个文件
+file(READ "${CMAKE_CURRENT_LIST_DIR}/VERSION" PROJECT_VER)
+string(STRIP "${PROJECT_VER}" PROJECT_VER)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 

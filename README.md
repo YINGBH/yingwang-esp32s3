@@ -3,6 +3,7 @@
 一块 ESP32-S3 板子替你登录校园网门户：**自己识别验证码、自己提交、掉线自己重登**，
 顺带当桌面时钟和三色电子价签的推送网关。整机离线运行，不需要电脑或手机。
 
+![Version](https://img.shields.io/github/v/release/YINGBH/yingwang-esp32s3?label=version&color=blue)
 ![ESP-IDF](https://img.shields.io/badge/ESP--IDF-5.5.x-blue)
 ![Platform](https://img.shields.io/badge/platform-ESP32--S3-green)
 ![License](https://img.shields.io/badge/license-MIT-black)
@@ -49,6 +50,9 @@ USB 连上板子，浏览器打开就是这套界面（不用装驱动、不用 
 省电那一段是 v1.25.0 新增的两项：**充电时也熄屏**、**熄屏亮度 0-100**
 （`0` = 全黑并清屏，`>0` = 低亮度常显）。
 
+> 版本号只在一处维护：仓库根目录的 **VERSION** 文件（CMakeLists.txt 读它当 PROJECT_VER，
+> 打包脚本也从它取）。改版本号只改这一个文件，别在文档里手写版本。
+
 ## 快速开始
 
 ```bash
@@ -72,7 +76,7 @@ python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0xC10000 model_q.
 **不想装 IDF**：直接下 Release 里的整片镜像，一步烧完（占位符配置，不含真实账号）：
 
 ```bash
-python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.14.0-full.bin
+python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.15.0-full.bin
 ```
 
 烧完用 USB 网页后台填 WiFi / 宽带账号 / 门户地址即可，不需要联网也能填。
@@ -81,7 +85,7 @@ python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.1
 **网页后台怎么开**：Windows 双击 `web\启动网页.cmd`（免安装），其他系统
 `python web/serve.py` 后打开 `http://127.0.0.1:8765`。见 [web/README.md](web/README.md)。
 
-> 不想 clone 整个仓库：Release 里有单独的 **`yingwang-web-tool-v2.14.0.zip`**，
+> 不想 clone 整个仓库：Release 里有单独的 **`yingwang-web-tool-v2.15.0.zip`**，
 > 解压后双击 `启动网页.cmd` 就能用。
 
 门户地址、AC IP、校园网 SSID **都可以在网页后台或串口里改**（`SET portal_base=...`），
@@ -173,6 +177,13 @@ SET portal_ssid=校园网-SSID
 表单字段、RSA 公钥、判定关键字**仍按作者学校写死，换学校还得改 `components/portal/`；
 验证码基本也要重训，流程见 [训练指南.md](训练指南.md)。
 没有验证码的门户直接跳过识别，能省掉最麻烦的一步。
+
+## 交流群
+
+| 项 | 内容 |
+|---|---|
+| QQ 群 | **220745204** |
+| 加群密码 | 仓库里不公开，请发邮件到 **3165832882@qq.com** 索取（写明来意即可） |
 
 ## 许可与免责
 
