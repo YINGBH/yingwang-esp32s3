@@ -168,3 +168,31 @@ void stats_week(uint32_t *ok, uint32_t *fail, uint32_t *drop)
     if (fail) *fail = f;
     if (drop) *drop = dr;
 }
+
+/* 导出 7 天记录：按 day 升序，跳过空槽 */
+int stats_history(stats_day_t *out, int max)
+{
+    if (!s_loaded) {
+        stats_init();
+    }
+    if (out == NULL || max <= 0) {
+        return 0;
+    }
+    int n = 0;
+    /* 简单插入排序：7 条数据，不值得上 qsort */
+    for (int i = 0; i < STATS_DAYS; i++) {
+        if (s_days[i].day == 0) {
+            continue;
+        }
+        int j = n - 1;
+        while (j >= 0 && out[j].day > s_days[i].day) {
+            out[j + 1] = out[j];
+            j--;
+        }
+        out[j + 1] = s_days[i];
+        if (n < max) {
+            n++;
+        }
+    }
+    return n;
+}

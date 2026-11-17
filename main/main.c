@@ -75,6 +75,7 @@ typedef enum {
     SC_TIMER,            /* 倒计时：BOOT 确认，UP/DN 加减 1 分钟 */
     SC_STOPWATCH,        /* 秒表：BOOT 开始/暂停，UP 归零，DN 翻页 */
     SC_ALARMS,           /* 作息页：显示 4 个闹钟 + 倒计时 + 秒表（只读汇总） */
+    SC_STATS,            /* 统计页：每天登录成功/失败、连续成功天数 */
     SC_MODEL,            /* 验证码模型信息：不进翻页循环，只能状态页长按 BOOT 进 */
     SC_CAPTCHA,          /* 不是可循环页面，登录时临时占用 */
     SC_ALARM,            /* 闹钟响铃页：不进翻页循环 */
@@ -89,6 +90,7 @@ typedef enum {
 static volatile int      s_state = ST_BOOT;
 static int64_t now_ms(void);            /* 前置声明 */
 static volatile int      s_screen = SC_CLOCK;
+static bool               s_stats_drawn = false;
 /* 按键推送倒计时：0 = 没有待执行的推送，否则到点再推 */
 static int64_t           s_esl_push_at_ms = 0;
 static bool              s_esl_push_test_card = false;
@@ -828,6 +830,100 @@ static void draw_bell_icon(int x, int y, uint16_t color)
 #define COL_TIME  26
 #define COL_WD    112
 #define COL_EN    200
+
+/* 本地估算的"击败全国百分之多少"。
+   设备没有服务器，拿不到真实全国数据，所以这是按固定公式算出来的百分位，
+   界面上标了「估算」，别当成真实排名。公式：
+     成功率(0-100)*0.6 + min(连续天数,30)*1.2 + min(有记录天数,7)*1.0 */
+static int stats_percentile(uint32_t ok, uint32_t fail, int streak, int days)
+{
+    uint32_t total = ok + fail;
+    int rate = total ? (int) (ok * 100 / total) : 0;
+    int s = streak > 30 ? 30 : streak;
+    int d = days > 7 ? 7 : days;
+    int score = (int) (rate * 0.6) + (int) (s * 1.2) + d;
+    if (score > 99) {
+        score = 99;
+    }
+    if (score < 1) {
+        score = 1;
+    }
+    return score;
+}
+
+/* 统计页：今天 / 本周 / 连续成功 / 最近几天明细
+   240px 宽只放得下约 20 个 ASCII：长行必须拆，否则右边被切掉（踩过） */
+static void render_stats(void)
+{
+    if (s_force_redraw || !s_stats_drawn) {
+        bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+        s_stats_drawn = true;
+    }
+
+    char buf[64];
+    uint16_t ok = 0, fail = 0, drop = 0;
+    stats_today(&ok, &fail, &drop);
+
+    /* 今天 */
+    bsp_display_text(8, 30, "今天", TH_DIM, TH_BG, 1);
+    snprintf(buf, sizeof(buf), "成 %u   败 %u   断 %u",
+             (unsigned) ok, (unsigned) fail, (unsigned) drop);
+    bsp_display_text(56, 30, buf, ok ? TH_OK : TH_WARN, TH_BG, 1);
+
+    /* 本周 */
+    uint32_t wok = 0, wfail = 0, wdrop = 0;
+    stats_week(&wok, &wfail, &wdrop);
+    bsp_display_text(8, 50, "本周", TH_DIM, TH_BG, 1);
+    snprintf(buf, sizeof(buf), "成 %lu   败 %lu",
+             (unsigned long) wok, (unsigned long) wfail);
+    bsp_display_text(56, 50, buf, TH_ACCENT, TH_BG, 1);
+
+    /* 明细 */
+    stats_day_t hist[7];
+    int n = stats_history(hist, 7);
+
+    /* 连续成功：从最近一天往前数，成功>0 且失败=0 才算 */
+    int streak = 0;
+    for (int i = n - 1; i >= 0; i--) {
+        if (hist[i].ok > 0 && hist[i].fail == 0) {
+            streak++;
+        } else {
+            break;
+        }
+    }
+    bsp_display_text(8, 70, "连续成功", TH_DIM, TH_BG, 1);
+    snprintf(buf, sizeof(buf), "%d 天", streak);
+    bsp_display_text(80, 70, buf, streak ? TH_OK : TH_DIM, TH_BG, 1);
+
+    /* 右侧：本地估算的"击败全国百分比"（不是真实排名，标了估算） */
+    {
+        int pct = stats_percentile(wok, wfail, streak, n);
+        snprintf(buf, sizeof(buf), "胜全国%d%%", pct);
+        int w = text_w(buf, 1);
+        int px = 240 - 8 - w;
+        if (px < 120) {
+            px = 120;                    /* 别越过中线，也别顶出屏幕右边 */
+        }
+        bsp_display_text(px, 70, buf,
+                         pct >= 70 ? TH_OK : (pct >= 40 ? TH_ACCENT : TH_DIM),
+                         TH_BG, 1);
+    }
+
+    bsp_display_text(8, 94, "最近记录", TH_DIM, TH_BG, 1);
+    int y = 112;
+    if (n == 0) {
+        bsp_display_text(16, y, "还没有记录", TH_DIM, TH_BG, 1);
+    }
+    for (int i = n - 1; i >= 0 && y <= 208; i--) {
+        int mon = (int) (hist[i].day / 100 % 100);
+        int day = (int) (hist[i].day % 100);
+        snprintf(buf, sizeof(buf), "%02d-%02d 成%2u 败%2u", mon, day,
+                 (unsigned) hist[i].ok, (unsigned) hist[i].fail);
+        uint16_t c = hist[i].fail ? TH_WARN : (hist[i].ok ? TH_OK : TH_DIM);
+        bsp_display_text(16, y, buf, c, TH_BG, 1);
+        y += 18;
+    }
+}
 
 static void render_alarms(void)
 {
@@ -1762,11 +1858,12 @@ void ui_noise_test(void)
 
 void ui_goto(int idx)
 {
-    /* 允许串口直接跳到模型页（9），但验证码页不能手动切 */
+    /* 允许串口直接跳到模型页（11），但验证码页不能手动切 */
     if (idx < 0 || idx >= SC_COUNT || idx == SC_CAPTCHA) {
         return;
     }
     s_screen = idx;
+    s_stats_drawn = false;
     s_force_redraw = true;
     s_clock_full = true;
     s_cal_day = -1;
@@ -2059,6 +2156,10 @@ static void ui_task(void *arg)
         case SC_ALARM:
             draw_header("闹钟", s_state);
             render_alarm();
+            break;
+        case SC_STATS:
+            draw_header("统计", s_state);
+            render_stats();
             break;
         case SC_MODEL:
             draw_header("模型", s_state);

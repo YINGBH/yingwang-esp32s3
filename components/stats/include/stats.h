@@ -31,6 +31,9 @@ void stats_note_drop(void);
 /** 今天的统计；任何参数都可以传 NULL */
 void stats_today(uint16_t *ok, uint16_t *fail, uint16_t *drop);
 
+/** 导出历史：按日期升序填进 out，返回条数（最多 max 条，空槽跳过） */
+int stats_history(stats_day_t *out, int max);
+
 /** 最近 7 天合计 */
 void stats_week(uint32_t *ok, uint32_t *fail, uint32_t *drop);
 
