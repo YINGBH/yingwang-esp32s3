@@ -1815,8 +1815,8 @@ static void draw_boot_logo(void)
     bsp_display_text((240 - lw) / 2, 76, "YING", TH_INFO, TH_BG, 5);
     char line[48];
     snprintf(line, sizeof(line), "YingWang v%s", ad ? ad->version : "?");
-    bsp_display_text_center(140, line, TH_DIM, TH_BG, 1);
-    bsp_display_text_center(160, "by YING", TH_DIM, TH_BG, 1);
+    bsp_display_text_center(152, line, TH_DIM, TH_BG, 1);
+    bsp_display_text_center(170, "by YING", TH_DIM, TH_BG, 1);
     bsp_display_flush();
 }
 
@@ -1846,7 +1846,7 @@ static void boot_animate(int speed)
     int bx = (240 - lw) / 2;
     for (int i = 0; i < 4; i++) {
         char one[2] = { brand[i], 0 };
-        bsp_display_text(bx + i * text_w("Y", 5), 76, one, TH_INFO, TH_BG, 5);
+        bsp_display_text(bx + i * text_w("Y", 5), 64, one, TH_INFO, TH_BG, 5);
         bsp_display_flush();
         vTaskDelay(pdMS_TO_TICKS(STEP + 20));
     }
@@ -1863,7 +1863,12 @@ static void boot_animate(int speed)
 
     /* ④ 进度条：边框 + 填充 + 一道光斑从左扫到右 */
     const int py = 196, pw = 160, ph = 8, px = (240 - pw) / 2;
+    /* 底 + 四条边框：不加边框的话填满后就是一条纯色线，看不出是进度条 */
     bsp_display_fill_rect(px, py, pw, ph, TH_PANEL);
+    bsp_display_fill_rect(px - 1, py - 1, pw + 2, 1, TH_DIM);
+    bsp_display_fill_rect(px - 1, py + ph, pw + 2, 1, TH_DIM);
+    bsp_display_fill_rect(px - 1, py - 1, 1, ph + 2, TH_DIM);
+    bsp_display_fill_rect(px + pw, py - 1, 1, ph + 2, TH_DIM);
     bsp_display_flush();
 
     for (int step = 0; step <= 10; step++) {
@@ -1912,7 +1917,7 @@ static void boot_anim_task(void *arg)
 {
     int speed = (int) (intptr_t) arg;
     boot_animate(speed);
-    s_ui_freeze = false;
+    /* 先别解冻：停在最后一帧方便截图（BOOTHINT 0 解冻） */
     s_force_redraw = true;
     vTaskDelete(NULL);
 }
