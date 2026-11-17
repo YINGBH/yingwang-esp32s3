@@ -1820,6 +1820,90 @@ static void draw_boot_logo(void)
     bsp_display_flush();
 }
 
+/* 开机动画：顶栏扫入 → 字母逐个出现 → 版本/作者 → 进度条 + 光斑
+   speed 越大越慢（BOOTANIM 调试用），正常开机传 1 */
+static void boot_animate(int speed)
+{
+    const esp_app_desc_t *ad = esp_app_get_description();
+    if (speed < 1) {
+        speed = 1;
+    }
+    const int STEP = 40 * speed;        /* 每帧延时 ms（speed>1 = 更慢，调试用） */
+
+    /* ① 清屏 + 顶栏从左扫到右。
+       注意用整屏 fill 而不是 bsp_display_clear：后者在有背景图时不会盖掉壁纸 */
+    bsp_display_fill_rect(0, 0, 240, 240, TH_BG);
+    bsp_display_flush();
+    for (int x = 0; x <= 240; x += 40) {
+        bsp_display_fill_rect(0, 0, x, 4, TH_INFO);
+        bsp_display_flush();
+        vTaskDelay(pdMS_TO_TICKS(STEP));
+    }
+
+    /* ② "YING" 字母逐个出现（缩放 5 倍，居中） */
+    const char *brand = "YING";
+    int lw = text_w(brand, 5);
+    int bx = (240 - lw) / 2;
+    for (int i = 0; i < 4; i++) {
+        char one[2] = { brand[i], 0 };
+        bsp_display_text(bx + i * text_w("Y", 5), 76, one, TH_INFO, TH_BG, 5);
+        bsp_display_flush();
+        vTaskDelay(pdMS_TO_TICKS(STEP + 20));
+    }
+
+    /* ③ 版本 + 作者逐行出现 */
+    char line[48];
+    snprintf(line, sizeof(line), "YingWang v%s", ad ? ad->version : "?");
+    bsp_display_text_center(140, line, TH_DIM, TH_BG, 1);
+    bsp_display_flush();
+    vTaskDelay(pdMS_TO_TICKS(STEP + 30));
+    bsp_display_text_center(160, "by YING", TH_DIM, TH_BG, 1);
+    bsp_display_flush();
+    vTaskDelay(pdMS_TO_TICKS(STEP));
+
+    /* ④ 进度条：边框 + 填充 + 一道光斑从左扫到右 */
+    const int py = 196, pw = 160, ph = 8, px = (240 - pw) / 2;
+    bsp_display_fill_rect(px, py, pw, ph, TH_PANEL);
+    bsp_display_flush();
+
+    for (int step = 0; step <= 10; step++) {
+        int w = pw * step / 10;
+        if (w > 0) {
+            bsp_display_fill_rect(px, py, w, ph, TH_ACCENT);
+        }
+        /* 光斑：进度条前端的一小段亮块 */
+        if (w > 8 && w < pw) {
+            bsp_display_fill_rect(px + w - 8, py, 8, ph, TH_INFO);
+        }
+        bsp_display_flush();
+        vTaskDelay(pdMS_TO_TICKS(STEP + 10));
+    }
+
+    /* ⑤ 收尾：整条填满 + 底部一行提示 */
+    bsp_display_fill_rect(px, py, pw, ph, TH_ACCENT);
+    bsp_display_text_center(216, "启动中", TH_DIM, TH_BG, 1);
+    bsp_display_flush();
+}
+
+/* 串口/网页调试用：重播一次开机动画（speed=4 表示慢 4 倍） */
+static void boot_anim_task(void *arg)
+{
+    int speed = (int) (intptr_t) arg;
+    boot_animate(speed);
+    s_ui_freeze = false;
+    s_force_redraw = true;
+    vTaskDelete(NULL);
+}
+
+void ui_replay_boot_anim(int speed)
+{
+    if (speed < 1) {
+        speed = 1;
+    }
+    s_ui_freeze = true;      /* 重播期间别让主循环把时钟画回来 */
+    xTaskCreate(boot_anim_task, "bootanim", 3072, (void *) (intptr_t) speed, 4, NULL);
+}
+
 /* 串口调试用：把开机 LOGO 画出来并冻结界面，方便截图。
    3 秒后自动恢复，免得忘了 SPLASH 0 把界面冻死。 */
 static esp_timer_handle_t s_logo_tmo = NULL;
@@ -3495,9 +3579,9 @@ void app_main(void)
     if (bsp_display_init() != ESP_OK) {
         ESP_LOGE(TAG, "屏幕初始化失败，继续跑");
     } else {
-        /* 开机 LOGO，1.2 秒后进主界面 */
-        draw_boot_logo();
-        vTaskDelay(pdMS_TO_TICKS(1200));
+        /* 开机动画（约 1.3 秒），结束后进主界面 */
+        boot_animate(1);
+        vTaskDelay(pdMS_TO_TICKS(250));
     }
 
     /* 按配置应用屏幕方向（0/90/180/270） */
