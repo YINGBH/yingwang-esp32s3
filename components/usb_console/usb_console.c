@@ -2,6 +2,7 @@
 #include "netstats.h"
 void ui_replay_boot_anim(int speed);
 void ui_boot_hint(const char *text);
+void ui_unfreeze(void);
 #include "time_weather.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -795,9 +796,29 @@ static void cli_task(void *arg)
             } else {
                 reply_err(esp_err_to_name(e));
             }
-        } else if (strcmp(line, "BOOTHINT") == 0) {
-            ui_boot_hint("正在连接 WiFi 中");
+        } else if (strncmp(line, "BOOTHINT", 8) == 0) {
+            /* BOOTHINT 1=连接中 2=认证中 3=已认证 4=未完成；不带参数=1 */
+            int n = (line[8] == ' ') ? atoi(line + 9) : 1;
+            if (n == 0) {
+                ui_unfreeze();
+                reply_ok();
+            } else {
+            switch (n) {
+            case 2:
+                ui_boot_hint("网络已通，正在认证中");
+                break;
+            case 3:
+                ui_boot_hint("已认证，进入主界面");
+                break;
+            case 4:
+                ui_boot_hint("认证未完成，进界面继续重试");
+                break;
+            default:
+                ui_boot_hint("正在连接 WiFi 中");
+                break;
+            }
             reply_ok();
+            }
         } else if (strcmp(line, "BOOTANIM") == 0) {
             ui_replay_boot_anim(4);          /* 慢 4 倍，方便看/截图 */
             reply_ok();

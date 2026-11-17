@@ -1896,7 +1896,15 @@ static void boot_hint(const char *text)
 /* 串口调试用：直接画一条开机提示（验证排版） */
 void ui_boot_hint(const char *text)
 {
+    s_ui_freeze = true;      /* 调试用：不冻结会被主循环的时钟页立刻盖掉 */
     boot_hint(text ? text : "正在连接 WiFi 中");
+}
+
+/* 解冻并让界面重画（配合 BOOTHINT 0） */
+void ui_unfreeze(void)
+{
+    s_ui_freeze = false;
+    s_force_redraw = true;
 }
 
 /* 串口/网页调试用：重播一次开机动画（speed=4 表示慢 4 倍） */
@@ -3736,6 +3744,23 @@ void app_main(void)
         set_state(ST_PROBE, wifi_sta_ip());
         /* WiFi 起来后才能真正设置省电模式；开机那次太早，会被驱动忽略 */
         esp_wifi_set_ps(WIFI_PS_NONE);
+
+        /* 开机画面上把第一次认证也走掉（最多 12 秒），
+           这样底部能看到「网络已通 → 正在认证中 → 已认证」，
+           而不是一闪而过就进主界面。 */
+        boot_hint("网络已通，正在认证中");
+        {
+            portal_wlan_t bw;
+            memset(&bw, 0, sizeof(bw));
+            portal_probe_t pr = portal_probe(&bw);
+            if (pr == PORTAL_NEED_LOGIN) {
+                do_login_round(&bw);
+                pr = portal_probe(&bw);
+            }
+            boot_hint(pr == PORTAL_ONLINE ? "已认证，进入主界面" :
+                      "认证未完成，进界面继续重试");
+            vTaskDelay(pdMS_TO_TICKS(600));
+        }
 
         /* 网页后台不在这里自动启动：由状态页长按 BOOT 控制 */
     }
