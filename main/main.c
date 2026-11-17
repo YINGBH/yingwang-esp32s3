@@ -1822,6 +1822,9 @@ static void draw_boot_logo(void)
 
 /* 开机动画：顶栏扫入 → 字母逐个出现 → 版本/作者 → 进度条 + 光斑
    speed 越大越慢（BOOTANIM 调试用），正常开机传 1 */
+static void boot_hint(const char *text);      /* 定义在后面 */
+static void boot_bar(int percent);
+
 static void boot_animate(int speed)
 {
     const esp_app_desc_t *ad = esp_app_get_description();
@@ -1871,8 +1874,9 @@ static void boot_animate(int speed)
     bsp_display_fill_rect(px + pw, py - 1, 1, ph + 2, TH_DIM);
     bsp_display_flush();
 
-    for (int step = 0; step <= 10; step++) {
-        int w = pw * step / 10;
+    /* 只走到 40%：剩下 60% 留给真实的连接/认证阶段，做成一段连续动画 */
+    for (int step = 0; step <= 4; step++) {
+        int w = pw * step / 4 * 40 / 100;
         if (w > 0) {
             bsp_display_fill_rect(px, py, w, ph, TH_ACCENT);
         }
@@ -1885,8 +1889,10 @@ static void boot_animate(int speed)
     }
 
     /* ⑤ 收尾：整条填满 + 底部一行提示 */
-    bsp_display_fill_rect(px, py, pw, ph, TH_ACCENT);
+    /* ⑤ 停在 40%，显示"正在连接 WiFi 中"；后面由 boot_progress() 接着推进 */
+    bsp_display_fill_rect(px, py, pw * 40 / 100, ph, TH_ACCENT);
     bsp_display_flush();
+    boot_hint("正在连接 WiFi 中");
 }
 
 /* 开机阶段的底部提示：先擦掉这一条再写，避免字叠在一起 */
@@ -1909,6 +1915,33 @@ static void boot_hint(const char *text)
 }
 
 /* 串口调试用：直接画一条开机提示（验证排版） */
+/* 只更新进度条（0-100），坐标和 boot_animate 里一致 */
+static void boot_bar(int percent)
+{
+    const int py = 210, pw = 160, ph = 8, px = (240 - pw) / 2;
+    if (percent < 0) {
+        percent = 0;
+    }
+    if (percent > 100) {
+        percent = 100;
+    }
+    bsp_display_fill_rect(px, py, pw, ph, TH_PANEL);          /* 先清空 */
+    int w = pw * percent / 100;
+    if (w > 0) {
+        bsp_display_fill_rect(px, py, w, ph, TH_ACCENT);
+    }
+    bsp_display_flush();
+}
+
+/* 进度 + 提示一起更新：开机阶段所有状态都走这里，保证是一段连续动画 */
+static void boot_progress(int percent, const char *text)
+{
+    boot_bar(percent);
+    if (text != NULL) {
+        boot_hint(text);
+    }
+}
+
 void ui_boot_hint(const char *text)
 {
     s_ui_freeze = true;      /* 调试用：不冻结会被主循环的时钟页立刻盖掉 */
@@ -3198,14 +3231,14 @@ static bool wait_for_wifi(uint32_t timeout_ms)
     while (!wifi_sta_connected()) {
         if (waited >= timeout_ms) {
             if (!shown_result) {
-                boot_hint("WiFi 没连上，先离线运行");
+                boot_progress(60, "WiFi 没连上，先离线运行");
                 shown_result = true;
             }
             return false;
         }
         /* 3 秒还没连上才提示一次；注意别在循环里反复画，否则文字一直闪 */
         if (!shown_waiting && waited >= 3000) {
-            boot_hint("正在连接 WiFi 中");
+            boot_progress(45, "正在连接 WiFi 中");
             shown_waiting = true;
         }
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -3214,7 +3247,7 @@ static bool wait_for_wifi(uint32_t timeout_ms)
     if (!shown_result) {
         char line[40];
         snprintf(line, sizeof(line), "已连接 %s", wifi_sta_ip());
-        boot_hint(line);
+        boot_progress(70, line);
         shown_result = true;
     }
     return true;
@@ -3732,7 +3765,6 @@ void app_main(void)
         wifi_sta_set_mac(s_mac_str);      /* 必须在 start/connect 之前 */
     }
     wifi_sta_set_static_ip(cfg.static_ip);   /* 必须在 start 之前，否则先走了 DHCP */
-    boot_hint("正在连接 WiFi 中");
     if (wifi_sta_start(cfg.wifi_ssid, cfg.wifi_pass) != ESP_OK) {
         ESP_LOGE(TAG, "WiFi 启动失败");
         set_state(ST_NOWIFI, "WiFi 启动失败");
@@ -3765,7 +3797,7 @@ void app_main(void)
         /* 开机画面上把第一次认证也走掉（最多 12 秒），
            这样底部能看到「网络已通 → 正在认证中 → 已认证」，
            而不是一闪而过就进主界面。 */
-        boot_hint("网络已通，正在认证中");
+        boot_progress(80, "网络已通，正在认证中");
         {
             portal_wlan_t bw;
             memset(&bw, 0, sizeof(bw));
@@ -3774,8 +3806,11 @@ void app_main(void)
                 do_login_round(&bw);
                 pr = portal_probe(&bw);
             }
-            boot_hint(pr == PORTAL_ONLINE ? "已认证，进入主界面" :
-                      "认证未完成，进界面继续重试");
+            if (pr == PORTAL_ONLINE) {
+                boot_progress(100, "已认证，进入主界面");
+            } else {
+                boot_progress(85, "认证未完成，进界面继续重试");
+            }
             vTaskDelay(pdMS_TO_TICKS(600));
         }
 
