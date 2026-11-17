@@ -102,6 +102,9 @@ static int               s_clock_minute = -1;
 static int               s_clock_second = -1;
 
 static volatile bool     s_ui_freeze = false;   /* 截图用：暂停界面刷新 */
+/* 开机阶段：动画 + 连接 WiFi + 首次认证还没走完时，UI 任务不许画界面，
+   否则主界面会提前盖掉开机动效（用户要求"必须等 WiFi 连完再进主界面"） */
+static volatile bool     s_boot_phase = true;
 static volatile bool     s_force_auth = false;  /* 强制走一次门户认证 */
 static volatile bool     s_portal_auth = true;  /* 是否做门户认证（板子负责这天打一次卡） */
 static int s_last_login_day = 0;   /* 上次完成每日登录的日期，20261103 这种 */
@@ -2253,6 +2256,12 @@ static void ui_task(void *arg)
             ESP_LOGW(TAG, "倒计时结束：响铃并跳回倒计时页");
         }
 
+        if (s_boot_phase) {
+            /* 开机还没走完：让开机动画/进度条独占屏幕 */
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
         if (s_ui_freeze) {
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
@@ -3769,6 +3778,8 @@ void app_main(void)
         ESP_LOGE(TAG, "WiFi 启动失败");
         set_state(ST_NOWIFI, "WiFi 启动失败");
         boot_hint("WiFi 启动失败");
+        s_boot_phase = false;
+        s_force_redraw = true;
     }
 
     /* 网络监控和天气要在联网后才有意义，先起任务让它们自己等 */
@@ -3789,6 +3800,8 @@ void app_main(void)
            长时间连不上由「离线 30 分钟重启」兜底。 */
         ESP_LOGW(TAG, "60 秒还没连上 WiFi，继续重连");
         set_state(ST_NOWIFI, "密码或信号有问题");
+        s_boot_phase = false;      /* 不能让用户一直看开机画面 */
+        s_force_redraw = true;
     } else {
         set_state(ST_PROBE, wifi_sta_ip());
         /* WiFi 起来后才能真正设置省电模式；开机那次太早，会被驱动忽略 */
@@ -3812,6 +3825,9 @@ void app_main(void)
                 boot_progress(85, "认证未完成，进界面继续重试");
             }
             vTaskDelay(pdMS_TO_TICKS(600));
+            /* 开机流程结束，交给 UI 任务 */
+            s_boot_phase = false;
+            s_force_redraw = true;
         }
 
         /* 网页后台不在这里自动启动：由状态页长按 BOOT 控制 */
