@@ -1893,9 +1893,19 @@ static void boot_animate(int speed)
 /* 开机阶段的底部提示：先擦掉这一条再写，避免字叠在一起 */
 static void boot_hint(const char *text)
 {
+    /* 同一句话不重复画：重复调用会造成文字闪烁（踩过） */
+    static const char *last = NULL;
+    if (text == NULL) {
+        return;
+    }
+    if (last != NULL && strcmp(last, text) == 0) {
+        return;
+    }
+    last = text;
     bsp_display_fill_rect(0, 204, 240, 36, TH_BG);
     bsp_display_text_center(216, text, TH_DIM, TH_BG, 1);
     bsp_display_flush();
+    ESP_LOGI(TAG, "开机提示：%s", text);
 }
 
 /* 串口调试用：直接画一条开机提示（验证排版） */
@@ -3182,28 +3192,30 @@ static void on_button(bsp_button_t btn, void *user)
 
 static bool wait_for_wifi(uint32_t timeout_ms)
 {
-    static bool hint_done = false;
+    static bool shown_waiting = false;   /* 画过"正在连接"了吗 */
+    static bool shown_result = false;    /* 画过结果了吗 */
     uint32_t waited = 0;
     while (!wifi_sta_connected()) {
         if (waited >= timeout_ms) {
-            if (!hint_done) {
+            if (!shown_result) {
                 boot_hint("WiFi 没连上，先离线运行");
-                hint_done = true;
+                shown_result = true;
             }
             return false;
         }
-        /* 3 秒还没连上就提示一次"正在连接"，避免看起来像死机 */
-        if (!hint_done && waited >= 3000) {
+        /* 3 秒还没连上才提示一次；注意别在循环里反复画，否则文字一直闪 */
+        if (!shown_waiting && waited >= 3000) {
             boot_hint("正在连接 WiFi 中");
+            shown_waiting = true;
         }
         vTaskDelay(pdMS_TO_TICKS(500));
         waited += 500;
     }
-    if (!hint_done) {
+    if (!shown_result) {
         char line[40];
         snprintf(line, sizeof(line), "已连接 %s", wifi_sta_ip());
         boot_hint(line);
-        hint_done = true;
+        shown_result = true;
     }
     return true;
 }
