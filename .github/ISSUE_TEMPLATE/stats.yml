@@ -1,0 +1,49 @@
+name: 成绩上报（算「胜全国 N%」用）
+description: 填一下你板子统计页上的 4 个数字，自动汇总成全网数据
+title: "[统计] 我的成绩"
+labels: ["stats"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        打开板子的**统计页**（UP/DN 翻到「统计」，或串口发 `PAGE 10`），
+        照着填下面 4 个数字就行。
+
+        提交后，机器人会自动汇总到 `stats/latest.json`。
+        板子联网后会读这个文件来算「胜全国 N%」（读不到就用本地估算）。
+
+  - type: input
+    id: ok
+    attributes:
+      label: 成功次数
+      description: 统计页「本周 成 XX」里的数字
+      placeholder: "11"
+    validations:
+      required: true
+
+  - type: input
+    id: fail
+    attributes:
+      label: 失败次数
+      description: 统计页「本周 败 XX」
+      placeholder: "0"
+    validations:
+      required: true
+
+  - type: input
+    id: streak
+    attributes:
+      label: 连续成功天数
+      description: 统计页「连续成功 X 天」
+      placeholder: "3"
+    validations:
+      required: true
+
+  - type: input
+    id: days
+    attributes:
+      label: 有记录的天数
+      description: 统计页「最近记录」里有几行（最多 7）
+      placeholder: "3"
+    validations:
+      required: true

@@ -1,0 +1,57 @@
+name: 统计上报汇总
+
+# 用户在「成绩上报」issue 里填 4 个数字，这里自动汇总成 stats/latest.json。
+# 板子只读 latest.json（raw.githubusercontent.com），固件里没有任何写权限。
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  aggregate:
+    if: contains(github.event.issue.labels.*.name, 'stats')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 汇总这条上报
+        env:
+          BODY: ${{ github.event.issue.body }}
+          NUM: ${{ github.event.issue.number }}
+        run: |
+          printf '%s' "$BODY" | python tools/aggregate_stats.py --add --issue "$NUM" --body-stdin
+
+      - name: 提交
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stats/reports.json stats/latest.json
+          if git diff --cached --quiet; then
+            echo "没有变化，跳过提交"
+          else
+            git commit -m "stats: 汇总 #${{ github.event.issue.number }} 的上报"
+            git push
+          fi
+
+      - name: 回复一句
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const latest = JSON.parse(fs.readFileSync('stats/latest.json', 'utf8'));
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `已记录 ✅ 目前共 **${latest.users}** 人上报。\n\n板子联网后会自动读取最新的 \`stats/latest.json\` 来算「胜全国 N%」。`
+            });

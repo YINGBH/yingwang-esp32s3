@@ -57,6 +57,7 @@
 #include "usb_console.h"
 #include "captcha_loader.h"
 #include "stats.h"
+#include "netstats.h"
 #include "beep.h"
 #include "logring.h"
 
@@ -919,10 +920,17 @@ static void render_stats(void)
     snprintf(buf, sizeof(buf), "%d 天", streak);
     bsp_display_text(80, 70, buf, streak ? TH_OK : TH_DIM, TH_BG, 1);
 
-    /* 右侧：本地估算的"击败全国百分比"（不是真实排名，标了估算） */
+    /* 右侧：击败全国的百分比。
+       能拉到仓库里的统计就用真数据（标「网」），拉不到退回本地估算（标「估」） */
     {
-        int pct = stats_percentile(wok, wfail, streak, n);
-        snprintf(buf, sizeof(buf), "胜全国%d%%", pct);
+        int local = stats_percentile(wok, wfail, streak, n);
+        int pct = netstats_percentile(local);
+        bool online = pct >= 0;
+        if (!online) {
+            pct = local;
+        }
+        snprintf(buf, sizeof(buf), "%s%d%%%s", online ? "网" : "估", pct,
+                 online ? "" : "(本地)");
         int w = text_w(buf, 1);
         int px = 240 - 8 - w;
         if (px < 120) {

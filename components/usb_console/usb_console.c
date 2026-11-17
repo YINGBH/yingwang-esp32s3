@@ -1,4 +1,5 @@
 #include "usb_console.h"
+#include "netstats.h"
 #include "time_weather.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -792,6 +793,16 @@ static void cli_task(void *arg)
             } else {
                 reply_err(esp_err_to_name(e));
             }
+        } else if (strcmp(line, "NETSTAT") == 0) {
+            /* 拉一次仓库里的统计（联网才有用），返回人数和我的百分位 */
+            esp_err_t e = netstats_refresh();
+            if (e == ESP_OK) {
+                printf("@{\"ok\":true,\"users\":%d}\n", netstats_users());
+            } else {
+                printf("@{\"ok\":false,\"err\":\"net\",\"users\":%d}\n",
+                        netstats_users());
+            }
+            fflush(stdout);
         } else if (strcmp(line, "HITO") == 0) {
             /* 联网拉一句「一言」：HTTP 吃栈，丢后台任务 */
             if (xTaskCreate(hito_task, "hito", 8192, NULL, 4, NULL) != pdPASS) {
