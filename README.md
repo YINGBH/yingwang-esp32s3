@@ -9,7 +9,7 @@
 ![License](https://img.shields.io/badge/license-MIT-black)
 ![Build](https://img.shields.io/badge/build-v5.5.6%20%C2%B7%200%20warnings-success)
 
-[快速开始](#快速开始) · [文档](#文档) · [支持学校](#支持学校) · [目录](#目录) · [**交流群**](#交流群) · [许可](#许可与免责)
+[快速开始](#快速开始) · [文档](#文档) · [Star 趋势](#star-趋势) · [支持学校](#支持学校) · [目录](#目录) · [**交流群**](#交流群) · [许可](#许可与免责)
 
 ![六个界面](docs/screen_preview.png)
 
@@ -180,6 +180,14 @@ SET portal_ssid=校园网-SSID
 表单字段、RSA 公钥、判定关键字**仍按作者学校写死，换学校还得改 `components/portal/`；
 验证码基本也要重训，流程见 [训练指南.md](训练指南.md)。
 没有验证码的门户直接跳过识别，能省掉最麻烦的一步。
+
+## Star 趋势
+
+![Star History](docs/star-history.svg)
+
+> 这张图由仓库里的 `.github/workflows/star-history.yml` 每天自动更新
+> （`tools/star_history.py` 拉 GitHub stargazers 接口画 SVG），不依赖第三方图床。
+> 想看可交互版本：[star-history.com](https://star-history.com/#YINGBH/yingwang-esp32s3&Date)
 
 ## 交流群
 
