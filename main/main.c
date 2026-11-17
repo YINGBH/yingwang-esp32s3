@@ -851,6 +851,30 @@ static int stats_percentile(uint32_t ok, uint32_t fail, int streak, int days)
     return score;
 }
 
+/* 按分数给称号（纯趣味）。分数就是 stats_percentile() 的返回值 1..99 */
+static const char *stats_title(int score)
+{
+    if (score >= 90) {
+        return "认证之神";
+    }
+    if (score >= 80) {
+        return "认证王者";
+    }
+    if (score >= 70) {
+        return "白金钉子户";
+    }
+    if (score >= 60) {
+        return "黄金打工人";
+    }
+    if (score >= 45) {
+        return "白银常驻";
+    }
+    if (score >= 30) {
+        return "青铜新生";
+    }
+    return "校园萌新";
+}
+
 /* 统计页：今天 / 本周 / 连续成功 / 最近几天明细
    240px 宽只放得下约 20 个 ASCII：长行必须拆，否则右边被切掉（踩过） */
 static void render_stats(void)
@@ -909,12 +933,22 @@ static void render_stats(void)
                          TH_BG, 1);
     }
 
-    bsp_display_text(8, 94, "最近记录", TH_DIM, TH_BG, 1);
-    int y = 112;
+    /* 称号（按分数给，纯趣味） */
+    {
+        int pct = stats_percentile(wok, wfail, streak, n);
+        const char *title = stats_title(pct);
+        bsp_display_text(8, 92, "称号", TH_DIM, TH_BG, 1);
+        bsp_display_text(56, 92, title,
+                         pct >= 90 ? TH_WARN : (pct >= 60 ? TH_OK : TH_ACCENT),
+                         TH_BG, 1);
+    }
+
+    bsp_display_text(8, 114, "最近记录", TH_DIM, TH_BG, 1);
+    int y = 132;
     if (n == 0) {
         bsp_display_text(16, y, "还没有记录", TH_DIM, TH_BG, 1);
     }
-    for (int i = n - 1; i >= 0 && y <= 208; i--) {
+    for (int i = n - 1; i >= 0 && y <= 206; i--) {
         int mon = (int) (hist[i].day / 100 % 100);
         int day = (int) (hist[i].day % 100);
         snprintf(buf, sizeof(buf), "%02d-%02d 成%2u 败%2u", mon, day,
