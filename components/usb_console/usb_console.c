@@ -1,6 +1,7 @@
 #include "usb_console.h"
 #include "netstats.h"
 void ui_replay_boot_anim(int speed);
+void ui_boot_hint(const char *text);
 #include "time_weather.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -794,6 +795,9 @@ static void cli_task(void *arg)
             } else {
                 reply_err(esp_err_to_name(e));
             }
+        } else if (strcmp(line, "BOOTHINT") == 0) {
+            ui_boot_hint("正在连接 WiFi 中");
+            reply_ok();
         } else if (strcmp(line, "BOOTANIM") == 0) {
             ui_replay_boot_anim(4);          /* 慢 4 倍，方便看/截图 */
             reply_ok();

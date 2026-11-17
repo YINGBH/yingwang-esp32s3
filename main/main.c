@@ -1885,6 +1885,20 @@ static void boot_animate(int speed)
     bsp_display_flush();
 }
 
+/* 开机阶段的底部提示：先擦掉这一条再写，避免字叠在一起 */
+static void boot_hint(const char *text)
+{
+    bsp_display_fill_rect(0, 204, 240, 36, TH_BG);
+    bsp_display_text_center(216, text, TH_DIM, TH_BG, 1);
+    bsp_display_flush();
+}
+
+/* 串口调试用：直接画一条开机提示（验证排版） */
+void ui_boot_hint(const char *text)
+{
+    boot_hint(text ? text : "正在连接 WiFi 中");
+}
+
 /* 串口/网页调试用：重播一次开机动画（speed=4 表示慢 4 倍） */
 static void boot_anim_task(void *arg)
 {
@@ -3155,11 +3169,28 @@ static void on_button(bsp_button_t btn, void *user)
 
 static bool wait_for_wifi(uint32_t timeout_ms)
 {
+    static bool hint_done = false;
     uint32_t waited = 0;
     while (!wifi_sta_connected()) {
-        if (waited >= timeout_ms) return false;
+        if (waited >= timeout_ms) {
+            if (!hint_done) {
+                boot_hint("WiFi 没连上，先离线运行");
+                hint_done = true;
+            }
+            return false;
+        }
+        /* 3 秒还没连上就提示一次"正在连接"，避免看起来像死机 */
+        if (!hint_done && waited >= 3000) {
+            boot_hint("正在连接 WiFi 中");
+        }
         vTaskDelay(pdMS_TO_TICKS(500));
         waited += 500;
+    }
+    if (!hint_done) {
+        char line[40];
+        snprintf(line, sizeof(line), "已连接 %s", wifi_sta_ip());
+        boot_hint(line);
+        hint_done = true;
     }
     return true;
 }
@@ -3676,9 +3707,11 @@ void app_main(void)
         wifi_sta_set_mac(s_mac_str);      /* 必须在 start/connect 之前 */
     }
     wifi_sta_set_static_ip(cfg.static_ip);   /* 必须在 start 之前，否则先走了 DHCP */
+    boot_hint("正在连接 WiFi 中");
     if (wifi_sta_start(cfg.wifi_ssid, cfg.wifi_pass) != ESP_OK) {
         ESP_LOGE(TAG, "WiFi 启动失败");
         set_state(ST_NOWIFI, "WiFi 启动失败");
+        boot_hint("WiFi 启动失败");
     }
 
     /* 网络监控和天气要在联网后才有意义，先起任务让它们自己等 */
