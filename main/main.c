@@ -1815,8 +1815,8 @@ static void draw_boot_logo(void)
     bsp_display_text((240 - lw) / 2, 76, "YING", TH_INFO, TH_BG, 5);
     char line[48];
     snprintf(line, sizeof(line), "YingWang v%s", ad ? ad->version : "?");
-    bsp_display_text_center(152, line, TH_DIM, TH_BG, 1);
-    bsp_display_text_center(170, "by YING", TH_DIM, TH_BG, 1);
+    bsp_display_text_center(146, line, TH_DIM, TH_BG, 1);
+    bsp_display_text_center(164, "by YING", TH_DIM, TH_BG, 1);
     bsp_display_flush();
 }
 
@@ -1846,7 +1846,7 @@ static void boot_animate(int speed)
     int bx = (240 - lw) / 2;
     for (int i = 0; i < 4; i++) {
         char one[2] = { brand[i], 0 };
-        bsp_display_text(bx + i * text_w("Y", 5), 64, one, TH_INFO, TH_BG, 5);
+        bsp_display_text(bx + i * text_w("Y", 5), 56, one, TH_INFO, TH_BG, 5);
         bsp_display_flush();
         vTaskDelay(pdMS_TO_TICKS(STEP + 20));
     }
@@ -1862,7 +1862,7 @@ static void boot_animate(int speed)
     vTaskDelay(pdMS_TO_TICKS(STEP));
 
     /* ④ 进度条：边框 + 填充 + 一道光斑从左扫到右 */
-    const int py = 196, pw = 160, ph = 8, px = (240 - pw) / 2;
+    const int py = 210, pw = 160, ph = 8, px = (240 - pw) / 2;
     /* 底 + 四条边框：不加边框的话填满后就是一条纯色线，看不出是进度条 */
     bsp_display_fill_rect(px, py, pw, ph, TH_PANEL);
     bsp_display_fill_rect(px - 1, py - 1, pw + 2, 1, TH_DIM);
@@ -1886,7 +1886,6 @@ static void boot_animate(int speed)
 
     /* ⑤ 收尾：整条填满 + 底部一行提示 */
     bsp_display_fill_rect(px, py, pw, ph, TH_ACCENT);
-    bsp_display_text_center(216, "启动中", TH_DIM, TH_BG, 1);
     bsp_display_flush();
 }
 
@@ -1902,8 +1901,9 @@ static void boot_hint(const char *text)
         return;
     }
     last = text;
-    bsp_display_fill_rect(0, 204, 240, 36, TH_BG);
-    bsp_display_text_center(216, text, TH_DIM, TH_BG, 1);
+    /* 提示放在 LOGO 下方居中（原来贴在屏幕最底下，用户反馈"应该在中间"） */
+    bsp_display_fill_rect(0, 180, 240, 24, TH_BG);
+    bsp_display_text_center(186, text, TH_DIM, TH_BG, 1);
     bsp_display_flush();
     ESP_LOGI(TAG, "开机提示：%s", text);
 }
