@@ -1,5 +1,6 @@
 #include "tracker_scan.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -17,6 +18,7 @@ typedef struct {
     int8_t   rssi_last;
     uint16_t seen;
     uint8_t  cls;
+    char     name[17];
     int64_t  first_us;
     int64_t  last_us;
     bool     used;
@@ -113,6 +115,97 @@ static uint8_t vendor_of_adv(const uint8_t *ad, int n, uint8_t *conf,
     return TRK_UNKNOWN;
 }
 
+/* 从广播里抠设备名（AD 0x08 简写 / 0x09 完整） */
+static void adv_name(const uint8_t *ad, int n, char *out, size_t cap)
+{
+    out[0] = '\0';
+    for (int i = 0; i + 1 < n;) {
+        uint8_t len = ad[i];
+        if (len == 0 || i + len > n) {
+            break;
+        }
+        uint8_t type = ad[i + 1];
+        if ((type == 0x08 || type == 0x09) && len >= 2) {
+            size_t k = (size_t) (len - 1);
+            if (k > cap - 1) {
+                k = cap - 1;
+            }
+            memcpy(out, ad + i + 2, k);
+            out[k] = '\0';
+            /* 只保留可打印字符，避免控制字符搞乱显示 */
+            for (size_t j = 0; j < k; j++) {
+                if (out[j] < 0x20 || out[j] == 0x7F) {
+                    out[j] = '?';
+                }
+            }
+            return;
+        }
+        i += len + 1;
+    }
+}
+
+/* 名字关键字：手机 */
+static bool name_looks_phone(const char *s)
+{
+    static const char *kw[] = { "iPhone", "iPad", "Android", "Redmi", "HUAWEI",
+                                "OPPO", "vivo", "Galaxy", "Pixel", "Honor",
+                                "OnePlus", "realme", "手机" };
+    for (size_t i = 0; i < sizeof(kw) / sizeof(kw[0]); i++) {
+        if (strcasestr(s, kw[i]) != NULL) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* 名字关键字：电脑 */
+static bool name_looks_computer(const char *s)
+{
+    static const char *kw[] = { "DESKTOP-", "LAPTOP-", "MacBook", "ThinkPad",
+                                "Notebook", "Windows", "PC-", "iMac", "Mac mini",
+                                "Surface" };
+    for (size_t i = 0; i < sizeof(kw) / sizeof(kw[0]); i++) {
+        if (strcasestr(s, kw[i]) != NULL) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* 用名字 + 苹果子类型修正类型 */
+static uint8_t refine_class(uint8_t vendor, uint8_t cls, const uint8_t *ad, int n,
+                            const char *name)
+{
+    if (name != NULL && name[0] != '\0') {
+        if (name_looks_computer(name)) {
+            return TRK_CLS_COMPUTER;
+        }
+        if (name_looks_phone(name)) {
+            return TRK_CLS_PHONE;
+        }
+    }
+    /* 苹果子类型：热点=手机；AirDrop/AirPlay=偏电脑 */
+    if (vendor == TRK_APPLE_OFB) {
+        for (int i = 0; i + 1 < n;) {
+            uint8_t len = ad[i];
+            if (len == 0 || i + len > n) {
+                break;
+            }
+            if (ad[i + 1] == 0xFF && len >= 5 && ad[i + 2] == 0x4C && ad[i + 3] == 0x00) {
+                uint8_t sub = ad[i + 4];
+                if (sub == 0x0D || sub == 0x0E) {
+                    return TRK_CLS_PHONE;
+                }
+                if (sub == 0x05 || sub == 0x09 || sub == 0x0A) {
+                    return TRK_CLS_COMPUTER;
+                }
+            }
+            i += len + 1;
+        }
+    }
+    return cls;
+}
+
 /* ---------------- 对外接口 ---------------- */
 
 void tracker_scan_begin(void)
@@ -174,10 +267,17 @@ void tracker_scan_feed(const uint8_t *addr, int8_t rssi, const uint8_t *ad, int 
     if (s == NULL) {
         return;
     }
+    char nm[17];
+    adv_name(ad, len, nm, sizeof(nm));
+    cls = refine_class(v, cls, ad, len, nm);
+
     s->vendor = v;
     s->conf = conf;
     s->flags = flags;
     s->cls = cls;
+    if (nm[0] != '\0') {
+        memcpy(s->name, nm, sizeof(s->name));
+    }
     s->rssi_last = rssi;
     s->seen++;
     s->last_us = esp_timer_get_time();
@@ -253,6 +353,7 @@ int tracker_scan_top(trk_entry_t *out, int max)
         out[n].conf = s_slots[best].conf;
         out[n].flags = s_slots[best].flags;
         out[n].cls = s_slots[best].cls;
+        memcpy(out[n].name, s_slots[best].name, sizeof(out[n].name));
         out[n].rssi_last = s_slots[best].rssi_last;
         out[n].seen = s_slots[best].seen;
         out[n].dur_ms = (uint32_t) ((s_slots[best].last_us - s_slots[best].first_us) / 1000);
@@ -294,4 +395,24 @@ int tracker_scan_class_count(trk_class_t c)
         }
     }
     return n;
+}
+
+int tracker_scan_classify(const uint8_t *ad, int len, int *out_cls, int *out_conf,
+                          char *out_name, int name_cap)
+{
+    uint8_t conf = 0, flags = 0, cls = TRK_CLS_OTHER;
+    uint8_t v = vendor_of_adv(ad, len, &conf, &flags, &cls);
+    char nm[17];
+    adv_name(ad, len, nm, sizeof(nm));
+    cls = refine_class(v, cls, ad, len, nm);
+    if (out_cls) {
+        *out_cls = cls;
+    }
+    if (out_conf) {
+        *out_conf = conf;
+    }
+    if (out_name && name_cap > 0) {
+        snprintf(out_name, (size_t) name_cap, "%s", nm);
+    }
+    return v;
 }

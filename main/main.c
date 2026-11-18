@@ -993,9 +993,15 @@ static void render_tracker(void)
     trk_entry_t top[3];
     int n = tracker_scan_top(top, 3);
     for (int i = 0; i < n && y <= 212; i++) {
-        snprintf(buf, sizeof(buf), "%s %s %d dBm %d 包",
-                 trk_name(top[i].vendor), cls_name(top[i].cls),
-                 top[i].rssi_last, (int) top[i].seen);
+        /* 有设备名就显示名字（截 10 个字符），没有就显示厂商 */
+        if (top[i].name[0] != '\0') {
+            snprintf(buf, sizeof(buf), "%.10s %s %d", top[i].name,
+                     cls_name(top[i].cls), top[i].rssi_last);
+        } else {
+            snprintf(buf, sizeof(buf), "%s %s %d dBm",
+                     trk_name(top[i].vendor), cls_name(top[i].cls),
+                     top[i].rssi_last);
+        }
         bsp_display_text(12, y, buf, TH_FG, TH_BG, 1);
         y += 17;
     }

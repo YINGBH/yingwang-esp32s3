@@ -834,6 +834,23 @@ static void cli_task(void *arg)
                 reply_err("busy");
             }
             fflush(stdout);
+        } else if (strncmp(line, "SCANTEST ", 9) == 0) {
+            /* SCANTEST <hex>：只分类，不记账。验证手机/电脑判定用 */
+            const char *hexp = line + 9;
+            size_t hl = strlen(hexp);
+            uint8_t ad[64];
+            size_t n = 0;
+            for (size_t i = 0; i + 1 < hl && n < sizeof(ad); i += 2) {
+                char b[3] = { hexp[i], hexp[i + 1], 0 };
+                ad[n++] = (uint8_t) strtoul(b, NULL, 16);
+            }
+            int cls = 0, conf = 0;
+            char nm[20] = { 0 };
+            int v = tracker_scan_classify(ad, (int) n, &cls, &conf, nm, sizeof(nm));
+            printf("@{\"ok\":true,\"bytes\":%u,\"vendor\":%d,\"cls\":%d,"
+                   "\"conf\":%d,\"name\":\"%s\"}\n",
+                   (unsigned) n, v, cls, conf, nm);
+            fflush(stdout);
         } else if (strcmp(line, "SCANRAW") == 0) {
             /* 导出未识别设备的原始广播（hex），用于加新厂商指纹 */
             trk_raw_t raw[TRK_RAW_MAX];

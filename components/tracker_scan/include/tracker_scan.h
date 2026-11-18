@@ -49,6 +49,7 @@ typedef struct {
     uint32_t dur_ms;
     uint8_t  cls;          /* trk_class_t */
     uint8_t  flags;        /* bit0 near_owner（DULT/Apple） */
+    char     name[17];     /* 广播里的设备名（没有就是空串） */
 } trk_entry_t;
 
 /* 未识别设备的原始载荷（用于离线分析、加新指纹） */
@@ -66,6 +67,10 @@ int tracker_scan_class_count(trk_class_t c);
 /** 取未识别设备的原始广播，返回条数 */
 int tracker_scan_raw(trk_raw_t *out, int max);
 int tracker_scan_unknown_count(void);
+
+/** 调试：只分类一段广播（不记账）。返回厂商，out_cls/out_conf/out_name 可为 NULL */
+int tracker_scan_classify(const uint8_t *ad, int len, int *out_cls, int *out_conf,
+                          char *out_name, int name_cap);
 
 /** 开始一轮：清空表 */
 void tracker_scan_begin(void);
