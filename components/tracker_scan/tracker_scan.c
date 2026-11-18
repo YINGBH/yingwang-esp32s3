@@ -15,9 +15,9 @@ typedef struct {
     uint8_t  vendor;
     uint8_t  conf;
     uint8_t  flags;
+    uint8_t  cls;
     int8_t   rssi_last;
     uint16_t seen;
-    uint8_t  cls;
     char     name[17];
     int64_t  first_us;
     int64_t  last_us;
@@ -25,25 +25,25 @@ typedef struct {
 } slot_t;
 
 static slot_t s_slots[MAX_ENTRIES];
-
-/* 未识别设备的原始载荷 */
-static trk_raw_t s_raw[TRK_RAW_MAX];
-static int s_raw_n = 0;
 static int s_count = 0;
 static volatile bool s_busy = false;
 static int64_t s_finished_us = 0;
+static int64_t s_started_us = 0;
 static uint32_t s_cost_ms = 0;
 static uint32_t s_expect_ms = 0;
-static int64_t  s_started_us = 0;
 
-/* ---------------- 指纹匹配 ---------------- */
+static trk_raw_t s_raw[TRK_RAW_MAX];
+static int s_raw_n = 0;
+
+/* ============================================================ 指纹匹配 */
 
 static uint8_t vendor_of_adv(const uint8_t *ad, int n, uint8_t *conf,
-                              uint8_t *flags, uint8_t *cls)
+                             uint8_t *flags, uint8_t *cls)
 {
     *conf = 0;
     *flags = 0;
     *cls = TRK_CLS_OTHER;
+
     for (int i = 0; i + 1 < n;) {
         uint8_t len = ad[i];
         if (len == 0 || i + len > n) {
@@ -53,18 +53,18 @@ static uint8_t vendor_of_adv(const uint8_t *ad, int n, uint8_t *conf,
         const uint8_t *d = ad + i + 2;
         int dlen = len - 1;
 
-        if (type == 0xFF && dlen >= 2) {              /* Manufacturer Specific */
+        if (type == 0xFF && dlen >= 2) {              /* 厂商自定义数据 */
             uint16_t cid = (uint16_t) (d[0] | (d[1] << 8));
             if (cid == 0x004C && dlen >= 4) {         /* Apple */
                 if (d[2] == 0x12 && dlen >= 3 + 27) { /* Find My 标签 */
                     *conf = 95;
                     *cls = TRK_CLS_TAG;
                     if (d[3] & 0x04) {
-                        *flags |= 0x01;               /* near_owner */
+                        *flags |= 0x01;
                     }
                     return TRK_APPLE_OFB;
                 }
-                if (d[2] == 0x07) {                   /* AirPods / 耳机 */
+                if (d[2] == 0x07) {                   /* AirPods */
                     *conf = 60;
                     *cls = TRK_CLS_AUDIO;
                     return TRK_APPLE_OFB;
@@ -72,39 +72,30 @@ static uint8_t vendor_of_adv(const uint8_t *ad, int n, uint8_t *conf,
                 if (d[2] == 0x10 || d[2] == 0x0F || d[2] == 0x05 ||
                     d[2] == 0x0C || d[2] == 0x0D) {   /* Handoff/Nearby/AirDrop */
                     *conf = 55;
-                    *cls = TRK_CLS_PHONE;             /* 手机或电脑，统一算手机类 */
+                    *cls = TRK_CLS_PHONE;
                     return TRK_APPLE_OFB;
                 }
             }
             if (cid == 0x0006 && dlen >= 3 && (d[2] & 0x03) == 0x03) {
-                /* 微软 Swift Pair：电脑/鼠标/键盘配对广播 */
+                /* 微软 Swift Pair：只认子类型，不看载荷（加密随机字节会被当成名字） */
                 *conf = 60;
                 *cls = TRK_CLS_COMPUTER;
-                return TRK_UNKNOWN;                   /* 厂商不认识，但类型有用 */
+                return TRK_UNKNOWN;
             }
             if (cid == 0x027D) { *conf = 45; *cls = TRK_CLS_PHONE; return TRK_HUAWEI; }
             if (cid == 0x0075) { *conf = 50; *cls = TRK_CLS_PHONE; return TRK_SAMSUNG; }
             if (cid == 0x038F) { *conf = 35; *cls = TRK_CLS_PHONE; return TRK_XIAOMI; }
         }
 
-        if (type == 0x16 && dlen >= 2) {              /* Service Data 16-bit */
+        if (type == 0x16 && dlen >= 2) {              /* 16-bit Service Data */
             uint16_t uuid = (uint16_t) (d[0] | (d[1] << 8));
             switch (uuid) {
             case 0xFE2C:                              /* Google Fast Pair */
-                /* 耳机和安卓手机都会用，先给"安卓手机"，名字/子类型再修正 */
                 *conf = 60; *cls = TRK_CLS_PHONE; return TRK_ANDROID;
             case 0xFEAA:                              /* Google FMDN */
-                *conf = 90; *cls = TRK_CLS_TAG;
-                if (dlen >= 3 && d[2] == 0x41) {
-                    *flags |= 0x02;                   /* separated */
-                }
-                return TRK_GOOGLE_FMDN;
+                *conf = 90; *cls = TRK_CLS_TAG; return TRK_GOOGLE_FMDN;
             case 0xFCB2:                              /* DULT */
-                *conf = 90; *cls = TRK_CLS_TAG;
-                if (dlen >= 16 && (d[15] & 0x01)) {
-                    *flags |= 0x01;
-                }
-                return TRK_DULT;
+                *conf = 90; *cls = TRK_CLS_TAG; return TRK_DULT;
             case 0xFD5A: *conf = 85; *cls = TRK_CLS_TAG; return TRK_SAMSUNG;
             case 0xFEED:
             case 0xFEEC:
@@ -118,6 +109,8 @@ static uint8_t vendor_of_adv(const uint8_t *ad, int n, uint8_t *conf,
     return TRK_UNKNOWN;
 }
 
+/* ============================================================ 名字相关 */
+
 /* 从广播里抠设备名（AD 0x08 简写 / 0x09 完整） */
 static void adv_name(const uint8_t *ad, int n, char *out, size_t cap)
 {
@@ -127,15 +120,13 @@ static void adv_name(const uint8_t *ad, int n, char *out, size_t cap)
         if (len == 0 || i + len > n) {
             break;
         }
-        uint8_t type = ad[i + 1];
-        if ((type == 0x08 || type == 0x09) && len >= 2) {
+        if ((ad[i + 1] == 0x08 || ad[i + 1] == 0x09) && len >= 2) {
             size_t k = (size_t) (len - 1);
             if (k > cap - 1) {
                 k = cap - 1;
             }
             memcpy(out, ad + i + 2, k);
             out[k] = '\0';
-            /* 只保留可打印字符，避免控制字符搞乱显示 */
             for (size_t j = 0; j < k; j++) {
                 if (out[j] < 0x20 || out[j] == 0x7F) {
                     out[j] = '?';
@@ -147,7 +138,83 @@ static void adv_name(const uint8_t *ad, int n, char *out, size_t cap)
     }
 }
 
-/* 名字关键字：手机 */
+/* 是否像主机名：只认 LAPTOP- / DESKTOP- / PC- / WIN- 前缀 */
+static bool looks_hostname(const char *s, int len)
+{
+    static const char *pfx[] = { "LAPTOP-", "DESKTOP-", "PC-", "WIN-" };
+    for (size_t i = 0; i < sizeof(pfx) / sizeof(pfx[0]); i++) {
+        size_t pl = strlen(pfx[i]);
+        if ((size_t) len >= pl + 2 && strncasecmp(s, pfx[i], pl) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* 在整段广播里找主机名（有些 Windows 把名字塞在厂商数据里，不是 AD 0x09） */
+static int adv_hostname(const uint8_t *ad, int n, char *out, size_t cap)
+{
+    out[0] = '\0';
+    for (int i = 0; i + 1 < n;) {
+        uint8_t len = ad[i];
+        if (len == 0 || i + len > n) {
+            break;
+        }
+        const uint8_t *d = ad + i + 2;
+        int dl = len - 1;
+        for (int k = 0; k + 7 < dl; k++) {
+            if (d[k] < 0x20 || d[k] >= 0x7F) {
+                continue;
+            }
+            int run = 0;
+            while (k + run < dl && d[k + run] >= 0x20 && d[k + run] < 0x7F) {
+                run++;
+            }
+            if (run >= 7 && looks_hostname((const char *) (d + k), run)) {
+                size_t c = (size_t) run;
+                if (c > cap - 1) {
+                    c = cap - 1;
+                }
+                memcpy(out, d + k, c);
+                out[c] = '\0';
+                return 1;
+            }
+            k += run;
+        }
+        i += len + 1;
+    }
+    return 0;
+}
+
+/* 设备名里带品牌 → 具体厂商（这些品牌没有可靠的厂商 ID，只能靠名字） */
+static uint8_t name_to_vendor(const char *s)
+{
+    static const struct { const char *kw; uint8_t v; } M[] = {
+        { "OPPO",    TRK_OPPO },
+        { "vivo",    TRK_VIVO },
+        { "iQOO",    TRK_VIVO },
+        { "HONOR",   TRK_HONOR },
+        { "realme",  TRK_REALME },
+        { "OnePlus", TRK_ONEPLUS },
+        { "Meizu",   TRK_MEIZU },
+        { "Redmi",   TRK_XIAOMI },
+        { "POCO",    TRK_XIAOMI },
+        { "HUAWEI",  TRK_HUAWEI },
+        { "nova",    TRK_HUAWEI },
+        { "Galaxy",  TRK_SAMSUNG },
+        { "Pixel",   TRK_GOOGLE_FMDN },
+        { "iPhone",  TRK_APPLE_OFB },
+        { "iPad",    TRK_APPLE_OFB },
+        { "MacBook", TRK_APPLE_OFB },
+    };
+    for (size_t i = 0; i < sizeof(M) / sizeof(M[0]); i++) {
+        if (strcasestr(s, M[i].kw) != NULL) {
+            return M[i].v;
+        }
+    }
+    return TRK_UNKNOWN;
+}
+
 static bool name_looks_phone(const char *s)
 {
     static const char *kw[] = { "iPhone", "iPad", "Android", "Redmi", "HUAWEI",
@@ -162,36 +229,6 @@ static bool name_looks_phone(const char *s)
     return false;
 }
 
-/* 设备名里带品牌 → 具体厂商（这些品牌没有可靠的厂商 ID，只能靠名字） */
-static uint8_t name_to_vendor(const char *s)
-{
-    static const struct { const char *kw; uint8_t v; } M[] = {
-        { "OPPO",     TRK_OPPO },
-        { "vivo",     TRK_VIVO },
-        { "iQOO",     TRK_VIVO },
-        { "HONOR",    TRK_HONOR },
-        { "realme",   TRK_REALME },
-        { "OnePlus",  TRK_ONEPLUS },
-        { "Meizu",    TRK_MEIZU },
-        { "Redmi",    TRK_XIAOMI },
-        { "POCO",     TRK_XIAOMI },
-        { "HUAWEI",   TRK_HUAWEI },
-        { "nova",     TRK_HUAWEI },
-        { "Galaxy",   TRK_SAMSUNG },
-        { "Pixel",    TRK_GOOGLE_FMDN },
-        { "iPhone",   TRK_APPLE_OFB },
-        { "iPad",     TRK_APPLE_OFB },
-        { "MacBook",  TRK_APPLE_OFB },
-    };
-    for (size_t i = 0; i < sizeof(M) / sizeof(M[0]); i++) {
-        if (strcasestr(s, M[i].kw) != NULL) {
-            return M[i].v;
-        }
-    }
-    return TRK_UNKNOWN;
-}
-
-/* 名字关键字：电脑 */
 static bool name_looks_computer(const char *s)
 {
     static const char *kw[] = { "DESKTOP-", "LAPTOP-", "MacBook", "ThinkPad",
@@ -245,8 +282,17 @@ static void enrich(const uint8_t *ad, int len, uint8_t *vendor, uint8_t *conf,
 {
     char nm[17];
     adv_name(ad, len, nm, sizeof(nm));
+    if (nm[0] == '\0') {
+        adv_hostname(ad, len, nm, sizeof(nm));
+    }
 
     if (nm[0] != '\0') {
+        if (looks_hostname(nm, (int) strlen(nm))) {
+            *cls = TRK_CLS_COMPUTER;
+            if (*conf < 50) {
+                *conf = 50;     /* 主机名是设备自报的 */
+            }
+        }
         uint8_t nv = name_to_vendor(nm);
         if (nv != TRK_UNKNOWN) {
             *vendor = nv;
@@ -254,7 +300,7 @@ static void enrich(const uint8_t *ad, int len, uint8_t *vendor, uint8_t *conf,
                 *cls = TRK_CLS_PHONE;
             }
             if (*conf < 50) {
-                *conf = 50;     /* 名字是设备自己声明的，可信度中等 */
+                *conf = 50;
             }
         }
     }
@@ -265,7 +311,17 @@ static void enrich(const uint8_t *ad, int len, uint8_t *vendor, uint8_t *conf,
     }
 }
 
-/* ---------------- 对外接口 ---------------- */
+/* ============================================================ 对外接口 */
+
+void tracker_scan_expect(uint32_t ms)
+{
+    s_expect_ms = ms;
+}
+
+uint32_t tracker_scan_expect_ms(void)
+{
+    return s_expect_ms;
+}
 
 void tracker_scan_begin(void)
 {
@@ -285,8 +341,12 @@ void tracker_scan_feed(const uint8_t *addr, int8_t rssi, const uint8_t *ad, int 
     }
     uint8_t conf = 0, flags = 0, cls = TRK_CLS_OTHER;
     uint8_t v = vendor_of_adv(ad, len, &conf, &flags, &cls);
+
+    char nm[17];
+    enrich(ad, len, &v, &conf, &cls, nm, sizeof(nm));
+
+    /* 认不出来的：留原始载荷 */
     if (v == TRK_UNKNOWN && cls == TRK_CLS_OTHER) {
-        /* 未知厂商：留原始载荷，方便事后再分析/加指纹 */
         for (int i = 0; i < s_raw_n; i++) {
             if (memcmp(s_raw[i].addr, addr, 6) == 0) {
                 s_raw[i].rssi = rssi;
@@ -327,9 +387,6 @@ void tracker_scan_feed(const uint8_t *addr, int8_t rssi, const uint8_t *ad, int 
     if (s == NULL) {
         return;
     }
-    char nm[17];
-    enrich(ad, len, &v, &conf, &cls, nm, sizeof(nm));
-
     s->vendor = v;
     s->conf = conf;
     s->flags = flags;
@@ -365,6 +422,14 @@ uint32_t tracker_scan_last_cost_ms(void)
     return s_cost_ms;
 }
 
+uint32_t tracker_scan_elapsed_ms(void)
+{
+    if (!s_busy || s_started_us == 0) {
+        return 0;
+    }
+    return (uint32_t) ((esp_timer_get_time() - s_started_us) / 1000);
+}
+
 uint32_t tracker_scan_last_age_ms(void)
 {
     if (s_finished_us == 0) {
@@ -378,6 +443,17 @@ int tracker_scan_vendor_count(trk_vendor_t v)
     int n = 0;
     for (int i = 0; i < MAX_ENTRIES; i++) {
         if (s_slots[i].used && s_slots[i].vendor == v) {
+            n++;
+        }
+    }
+    return n;
+}
+
+int tracker_scan_class_count(trk_class_t c)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_ENTRIES; i++) {
+        if (s_slots[i].used && s_slots[i].cls == (uint8_t) c) {
             n++;
         }
     }
@@ -412,22 +488,13 @@ int tracker_scan_top(trk_entry_t *out, int max)
         out[n].conf = s_slots[best].conf;
         out[n].flags = s_slots[best].flags;
         out[n].cls = s_slots[best].cls;
-        memcpy(out[n].name, s_slots[best].name, sizeof(out[n].name));
         out[n].rssi_last = s_slots[best].rssi_last;
         out[n].seen = s_slots[best].seen;
         out[n].dur_ms = (uint32_t) ((s_slots[best].last_us - s_slots[best].first_us) / 1000);
+        memcpy(out[n].name, s_slots[best].name, sizeof(out[n].name));
         n++;
     }
     return n;
-}
-
-void tracker_scan_clear(void)
-{
-    memset(s_slots, 0, sizeof(s_slots));
-    s_count = 0;
-    s_busy = false;
-    s_cost_ms = 0;
-    s_finished_us = 0;
 }
 
 int tracker_scan_raw(trk_raw_t *out, int max)
@@ -445,15 +512,15 @@ int tracker_scan_unknown_count(void)
     return s_raw_n;
 }
 
-int tracker_scan_class_count(trk_class_t c)
+void tracker_scan_clear(void)
 {
-    int n = 0;
-    for (int i = 0; i < MAX_ENTRIES; i++) {
-        if (s_slots[i].used && s_slots[i].cls == (uint8_t) c) {
-            n++;
-        }
-    }
-    return n;
+    memset(s_slots, 0, sizeof(s_slots));
+    memset(s_raw, 0, sizeof(s_raw));
+    s_raw_n = 0;
+    s_count = 0;
+    s_busy = false;
+    s_cost_ms = 0;
+    s_finished_us = 0;
 }
 
 int tracker_scan_classify(const uint8_t *ad, int len, int *out_cls, int *out_conf,
@@ -473,22 +540,4 @@ int tracker_scan_classify(const uint8_t *ad, int len, int *out_cls, int *out_con
         snprintf(out_name, (size_t) name_cap, "%s", nm);
     }
     return v;
-}
-
-void tracker_scan_expect(uint32_t ms)
-{
-    s_expect_ms = ms;
-}
-
-uint32_t tracker_scan_elapsed_ms(void)
-{
-    if (!s_busy || s_started_us == 0) {
-        return 0;
-    }
-    return (uint32_t) ((esp_timer_get_time() - s_started_us) / 1000);
-}
-
-uint32_t tracker_scan_expect_ms(void)
-{
-    return s_expect_ms;
 }
