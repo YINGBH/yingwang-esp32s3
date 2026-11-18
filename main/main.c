@@ -1011,29 +1011,21 @@ static void render_tracker(void)
         }
     }
 
-    /* 第 3 段：厂商 Top4 图标（y0+56，20px 高） */
+    /* 第 3 段：厂商图标（固定顺序，华为优先，最多 4 个） */
     {
-        static const uint8_t all[] = { TRK_APPLE_OFB, TRK_HUAWEI, TRK_XIAOMI,
-                                       TRK_OPPO, TRK_VIVO, TRK_HONOR, TRK_REALME,
-                                       TRK_ONEPLUS, TRK_MEIZU, TRK_ANDROID,
-                                       TRK_GOOGLE_FMDN, TRK_SAMSUNG, TRK_TILE,
-                                       TRK_DULT };
-        int cnt[sizeof(all) / sizeof(all[0])];
-        for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++) {
-            cnt[i] = tracker_scan_vendor_count((trk_vendor_t) all[i]);
-        }
-        for (int slot = 0; slot < 4; slot++) {
-            int best = -1;
-            for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++) {
-                if (cnt[i] > 0 && (best < 0 || cnt[i] > cnt[best])) {
-                    best = (int) i;
-                }
+        static const uint8_t ORDER[] = { TRK_HUAWEI, TRK_APPLE_OFB, TRK_XIAOMI,
+                                         TRK_OPPO, TRK_VIVO, TRK_HONOR, TRK_REALME,
+                                         TRK_ONEPLUS, TRK_MEIZU, TRK_ANDROID,
+                                         TRK_GOOGLE_FMDN, TRK_SAMSUNG, TRK_TILE,
+                                         TRK_DULT };
+        int slot = 0;
+        for (size_t i = 0; i < sizeof(ORDER) / sizeof(ORDER[0]) && slot < 4; i++) {
+            int n = tracker_scan_vendor_count((trk_vendor_t) ORDER[i]);
+            if (n <= 0) {
+                continue;
             }
-            if (best < 0) {
-                break;
-            }
-            draw_vendor_cell(all[best], cnt[best], 8 + slot * 56, y0 + 56);
-            cnt[best] = 0;
+            draw_vendor_cell(ORDER[i], n, 8 + slot * 56, y0 + 56);
+            slot++;
         }
     }
 
