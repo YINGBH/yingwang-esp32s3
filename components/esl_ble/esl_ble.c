@@ -1633,6 +1633,7 @@ esp_err_t esl_ble_tracker_scan(uint32_t ms)
         ble_gap_disc_cancel();
         s_scanning = false;
     }
+    tracker_scan_expect(ms);
     tracker_scan_begin();
     s_trk_mode = true;
     s_trk_start_us = esp_timer_get_time();

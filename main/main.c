@@ -849,6 +849,13 @@ static const char *trk_name(uint8_t v)
     case TRK_DULT:        return "DULT";
     case TRK_HUAWEI:      return "华为";
     case TRK_XIAOMI:      return "小米";
+    case TRK_OPPO:        return "OPPO";
+    case TRK_VIVO:        return "vivo";
+    case TRK_HONOR:       return "荣耀";
+    case TRK_REALME:      return "realme";
+    case TRK_ONEPLUS:     return "一加";
+    case TRK_MEIZU:       return "魅族";
+    case TRK_ANDROID:     return "安卓";
     default:              return "未知";
     }
 }
@@ -889,9 +896,22 @@ static void draw_vendor_cell(int v, int n, int x, int y)
         draw_icon(icon, x, y, TH_FG);
         bsp_display_text(x + VENDOR_ICON_SIZE + 3, y + 4, cnt, TH_OK, TH_BG, 1);
     } else {
-        /* 三星 / Tile：官方 logo 是整词，压小就糊了，用字母标记 */
-        const char *mark = (v == TRK_SAMSUNG) ? "S" : "T";
-        bsp_display_text(x + 6, y + 4, mark, TH_FG, TH_BG, 2);
+        /* 没有 1bit 图标的厂商：用 1-2 个字母标记（三星/Tile 的官方图标是整词，压小就糊） */
+        const char *mark = "?";
+        switch (v) {
+        case TRK_SAMSUNG: mark = "S";  break;
+        case TRK_TILE:    mark = "T";  break;
+        case TRK_OPPO:    mark = "OP"; break;
+        case TRK_VIVO:    mark = "VI"; break;
+        case TRK_HONOR:   mark = "HO"; break;
+        case TRK_REALME:  mark = "rm"; break;
+        case TRK_ONEPLUS: mark = "1+"; break;
+        case TRK_MEIZU:   mark = "MZ"; break;
+        case TRK_ANDROID: mark = "AN"; break;
+        default:          break;
+        }
+        int n = (int) strlen(mark);
+        bsp_display_text(x + (n > 1 ? 1 : 6), y + 4, mark, TH_FG, TH_BG, n > 1 ? 1 : 2);
         bsp_display_text(x + VENDOR_ICON_SIZE + 3, y + 4, cnt, TH_OK, TH_BG, 1);
     }
 }
@@ -910,101 +930,127 @@ static const char *cls_name(uint8_t c)
 static void render_tracker(void)
 {
     char buf[64];
-    int y = 30;
+    const int y0 = 30;
 
-    /* 内容随扫描状态变，必须每帧清屏，否则旧文字会和新的叠在一起（踩过） */
+    /* 内容随扫描状态变，每帧清屏 */
     bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
 
+    /* ---------- 扫描中：进度条 + 已发现 ---------- */
     if (tracker_scan_busy()) {
-        bsp_display_text(8, y, "扫描中", TH_ACCENT, TH_BG, 1);
-        bsp_display_text(8, y + 24, "被动监听，不连设备", TH_DIM, TH_BG, 1);
+        uint32_t el = tracker_scan_elapsed_ms();
+        uint32_t total = tracker_scan_expect_ms();
+        if (total == 0) {
+            total = 8000;
+        }
+        int pct = (int) (el * 100 / total);
+        if (pct > 100) {
+            pct = 100;
+        }
+
+        bsp_display_text(8, y0, "扫描中", TH_ACCENT, TH_BG, 1);
+        snprintf(buf, sizeof(buf), "%d%%", pct);
+        bsp_display_text(200, y0, buf, TH_DIM, TH_BG, 1);
+
+        const int bx = 8, by = y0 + 26, bw = 224, bh = 12;
+        bsp_display_fill_rect(bx, by, bw, bh, TH_PANEL);
+        int fw = bw * pct / 100;
+        if (fw > 0) {
+            bsp_display_fill_rect(bx, by, fw, bh, TH_ACCENT);
+        }
+        if (fw > 10 && fw < bw - 2) {
+            bsp_display_fill_rect(bx + fw - 10, by, 10, bh, TH_INFO);
+        }
+
+        snprintf(buf, sizeof(buf), "已发现 %d 台", tracker_scan_count());
+        bsp_display_text(8, by + 30, buf, TH_FG, TH_BG, 2);
+
+        /* 三点呼吸 */
+        int ph = (int) (el / 250) % 4;
+        for (int i = 0; i < 3; i++) {
+            bsp_display_fill_rect(108 + i * 12, 196, 6, 6,
+                                  i == ph ? TH_ACCENT : TH_PANEL);
+        }
         return;
     }
 
+    /* ---------- 完成态 ---------- */
     if (tracker_scan_count() == 0) {
-        bsp_display_text(8, y, "还没有扫描记录", TH_DIM, TH_BG, 1);
-        bsp_display_text(8, y + 26, "按 BOOT 扫一次（8 秒）", TH_ACCENT, TH_BG, 1);
-        bsp_display_text(8, y + 50, "只识别厂商，不解归属", TH_DIM, TH_BG, 1);
+        bsp_display_text(8, y0, "按 BOOT 扫一次", TH_ACCENT, TH_BG, 2);
+        bsp_display_text(8, y0 + 40, "被动监听，不连设备", TH_DIM, TH_BG, 1);
         return;
     }
 
-    uint32_t age = tracker_scan_last_age_ms() / 1000;
-    snprintf(buf, sizeof(buf), "上次 %lu 秒前 共 %d 台",
-             (unsigned long) age, tracker_scan_count());
-    bsp_display_text(8, y, buf, TH_FG, TH_BG, 1);
-    y += 18;
+    /* 第 1 段：共 N 台（2 倍字，占 y0..y0+24） */
+    snprintf(buf, sizeof(buf), "共 %d 台", tracker_scan_count());
+    bsp_display_text(8, y0, buf, TH_FG, TH_BG, 2);
 
-    snprintf(buf, sizeof(buf), "用时 %lu.%lu 秒 BOOT 重扫",
-             (unsigned long) (tracker_scan_last_cost_ms() / 1000),
-             (unsigned long) (tracker_scan_last_cost_ms() % 1000 / 100));
-    bsp_display_text(8, y, buf, TH_DIM, TH_BG, 1);
-    y += 26;
-
-    /* 类型汇总：标签 / 手机 / 电脑 / 耳机 */
+    /* 第 2 段：类型小计（y0+32，只列非零，最多 3 项一行） */
     {
-        int y2 = y;
-        int col = 0;
-        for (int c = 0; c < TRK_CLS_COUNT; c++) {
-            int n = tracker_scan_class_count((trk_class_t) c);
+        static const struct { int cls; const char *nm; } CL[] = {
+            { TRK_CLS_TAG, "标签" }, { TRK_CLS_PHONE, "手机" },
+            { TRK_CLS_COMPUTER, "电脑" }, { TRK_CLS_AUDIO, "耳机" },
+        };
+        int x = 8, cnt = 0;
+        for (int i = 0; i < 4; i++) {
+            int n = tracker_scan_class_count((trk_class_t) CL[i].cls);
             if (n <= 0) {
                 continue;
             }
-            snprintf(buf, sizeof(buf), "%s %d", cls_name((uint8_t) c), n);
-            bsp_display_text(8 + col * 112, y2, buf, TH_FG, TH_BG, 1);
-            col++;
-            if (col == 2) {
-                col = 0;
-                y2 += 18;
+            snprintf(buf, sizeof(buf), "%s %d", CL[i].nm, n);
+            bsp_display_text(x, y0 + 32, buf, TH_OK, TH_BG, 1);
+            x += 62;
+            if (++cnt >= 3) {
+                break;
             }
         }
-        y = y2 + (col ? 22 : 4);
     }
 
-    /* 厂商格子：两行，每行最多 4 个（带 logo） */
-    static const uint8_t order[] = { TRK_APPLE_OFB, TRK_GOOGLE_FMDN, TRK_SAMSUNG,
-                                     TRK_TILE, TRK_DULT, TRK_HUAWEI, TRK_XIAOMI };
-    int shown = 0;
-    for (int i = 0; i < (int) (sizeof(order) / sizeof(order[0])); i++) {
-        int n = tracker_scan_vendor_count((trk_vendor_t) order[i]);
-        if (n <= 0) {
-            continue;
+    /* 第 3 段：厂商 Top4 图标（y0+56，20px 高） */
+    {
+        static const uint8_t all[] = { TRK_APPLE_OFB, TRK_HUAWEI, TRK_XIAOMI,
+                                       TRK_OPPO, TRK_VIVO, TRK_HONOR, TRK_REALME,
+                                       TRK_ONEPLUS, TRK_MEIZU, TRK_ANDROID,
+                                       TRK_GOOGLE_FMDN, TRK_SAMSUNG, TRK_TILE,
+                                       TRK_DULT };
+        int cnt[sizeof(all) / sizeof(all[0])];
+        for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++) {
+            cnt[i] = tracker_scan_vendor_count((trk_vendor_t) all[i]);
         }
-        int slot = shown % 4;
-        int row = shown / 4;
-        draw_vendor_cell(order[i], n, 8 + slot * 56, y + row * 28);
-        shown++;
-    }
-    if (shown > 0) {
-        y += ((shown + 3) / 4) * 28 + 4;
-    }
-
-    /* 未识别的设备：只报数量，原始载荷用 SCANRAW 导出 */
-    int unk = tracker_scan_unknown_count();
-    if (unk > 0) {
-        snprintf(buf, sizeof(buf), "未知 %d 台", unk);
-        bsp_display_text(8, y, buf, TH_DIM, TH_BG, 1);
-        y += 18;
-    }
-
-    if (y < 196) {
-        bsp_display_text(8, y, "最活跃", TH_DIM, TH_BG, 1);
-        y += 18;
-    }
-    trk_entry_t top[3];
-    int n = tracker_scan_top(top, 3);
-    for (int i = 0; i < n && y <= 212; i++) {
-        /* 有设备名就显示名字（截 10 个字符），没有就显示厂商 */
-        if (top[i].name[0] != '\0') {
-            snprintf(buf, sizeof(buf), "%.10s %s %d", top[i].name,
-                     cls_name(top[i].cls), top[i].rssi_last);
-        } else {
-            snprintf(buf, sizeof(buf), "%s %s %d dBm",
-                     trk_name(top[i].vendor), cls_name(top[i].cls),
-                     top[i].rssi_last);
+        for (int slot = 0; slot < 4; slot++) {
+            int best = -1;
+            for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++) {
+                if (cnt[i] > 0 && (best < 0 || cnt[i] > cnt[best])) {
+                    best = (int) i;
+                }
+            }
+            if (best < 0) {
+                break;
+            }
+            draw_vendor_cell(all[best], cnt[best], 8 + slot * 56, y0 + 56);
+            cnt[best] = 0;
         }
-        bsp_display_text(12, y, buf, TH_FG, TH_BG, 1);
-        y += 17;
     }
+
+    /* 第 4 段：最活跃 2 条（y0+88 起，每条 20px） */
+    {
+        bsp_display_text(8, y0 + 90, "最活跃", TH_DIM, TH_BG, 1);
+        trk_entry_t top[2];
+        int n = tracker_scan_top(top, 2);
+        int y = y0 + 110;
+        for (int i = 0; i < n; i++) {
+            if (top[i].name[0] != '\0') {
+                snprintf(buf, sizeof(buf), "%.9s %d", top[i].name, top[i].rssi_last);
+            } else {
+                snprintf(buf, sizeof(buf), "%s %d", trk_name(top[i].vendor),
+                         top[i].rssi_last);
+            }
+            bsp_display_text(12, y, buf, TH_FG, TH_BG, 1);
+            y += 20;
+        }
+    }
+
+    /* 底部提示 */
+    bsp_display_text(8, 212, "BOOT 重扫", TH_DIM, TH_BG, 1);
 }
 
 /* 本地估算的"击败全国百分之多少"。
@@ -2545,6 +2591,9 @@ static void ui_task(void *arg)
             if (now_busy != last_busy) {
                 last_busy = now_busy;
                 s_force_redraw = true;
+            }
+            if (now_busy) {
+                s_force_redraw = true;    /* 扫描中：每帧重绘，进度条才动 */
             }
             draw_header("扫描", s_state);
             render_tracker();

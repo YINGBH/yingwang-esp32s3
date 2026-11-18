@@ -33,6 +33,8 @@ static int s_count = 0;
 static volatile bool s_busy = false;
 static int64_t s_finished_us = 0;
 static uint32_t s_cost_ms = 0;
+static uint32_t s_expect_ms = 0;
+static int64_t  s_started_us = 0;
 
 /* ---------------- 指纹匹配 ---------------- */
 
@@ -88,8 +90,9 @@ static uint8_t vendor_of_adv(const uint8_t *ad, int n, uint8_t *conf,
         if (type == 0x16 && dlen >= 2) {              /* Service Data 16-bit */
             uint16_t uuid = (uint16_t) (d[0] | (d[1] << 8));
             switch (uuid) {
-            case 0xFE2C:                              /* Google Fast Pair（耳机） */
-                *conf = 70; *cls = TRK_CLS_AUDIO; return TRK_GOOGLE_FMDN;
+            case 0xFE2C:                              /* Google Fast Pair */
+                /* 耳机和安卓手机都会用，先给"安卓手机"，名字/子类型再修正 */
+                *conf = 60; *cls = TRK_CLS_PHONE; return TRK_ANDROID;
             case 0xFEAA:                              /* Google FMDN */
                 *conf = 90; *cls = TRK_CLS_TAG;
                 if (dlen >= 3 && d[2] == 0x41) {
@@ -148,14 +151,44 @@ static void adv_name(const uint8_t *ad, int n, char *out, size_t cap)
 static bool name_looks_phone(const char *s)
 {
     static const char *kw[] = { "iPhone", "iPad", "Android", "Redmi", "HUAWEI",
-                                "OPPO", "vivo", "Galaxy", "Pixel", "Honor",
-                                "OnePlus", "realme", "手机" };
+                                "OPPO", "vivo", "iQOO", "Galaxy", "Pixel", "HONOR",
+                                "Honor", "OnePlus", "realme", "Meizu", "POCO",
+                                "nova", "手机" };
     for (size_t i = 0; i < sizeof(kw) / sizeof(kw[0]); i++) {
         if (strcasestr(s, kw[i]) != NULL) {
             return true;
         }
     }
     return false;
+}
+
+/* 设备名里带品牌 → 具体厂商（这些品牌没有可靠的厂商 ID，只能靠名字） */
+static uint8_t name_to_vendor(const char *s)
+{
+    static const struct { const char *kw; uint8_t v; } M[] = {
+        { "OPPO",     TRK_OPPO },
+        { "vivo",     TRK_VIVO },
+        { "iQOO",     TRK_VIVO },
+        { "HONOR",    TRK_HONOR },
+        { "realme",   TRK_REALME },
+        { "OnePlus",  TRK_ONEPLUS },
+        { "Meizu",    TRK_MEIZU },
+        { "Redmi",    TRK_XIAOMI },
+        { "POCO",     TRK_XIAOMI },
+        { "HUAWEI",   TRK_HUAWEI },
+        { "nova",     TRK_HUAWEI },
+        { "Galaxy",   TRK_SAMSUNG },
+        { "Pixel",    TRK_GOOGLE_FMDN },
+        { "iPhone",   TRK_APPLE_OFB },
+        { "iPad",     TRK_APPLE_OFB },
+        { "MacBook",  TRK_APPLE_OFB },
+    };
+    for (size_t i = 0; i < sizeof(M) / sizeof(M[0]); i++) {
+        if (strcasestr(s, M[i].kw) != NULL) {
+            return M[i].v;
+        }
+    }
+    return TRK_UNKNOWN;
 }
 
 /* 名字关键字：电脑 */
@@ -206,6 +239,32 @@ static uint8_t refine_class(uint8_t vendor, uint8_t cls, const uint8_t *ad, int 
     return cls;
 }
 
+/* 统一加工：名字定品牌 + 名字/子类型定类型。feed 和 classify 都走这里 */
+static void enrich(const uint8_t *ad, int len, uint8_t *vendor, uint8_t *conf,
+                   uint8_t *cls, char *name, size_t name_cap)
+{
+    char nm[17];
+    adv_name(ad, len, nm, sizeof(nm));
+
+    if (nm[0] != '\0') {
+        uint8_t nv = name_to_vendor(nm);
+        if (nv != TRK_UNKNOWN) {
+            *vendor = nv;
+            if (*cls == TRK_CLS_OTHER) {
+                *cls = TRK_CLS_PHONE;
+            }
+            if (*conf < 50) {
+                *conf = 50;     /* 名字是设备自己声明的，可信度中等 */
+            }
+        }
+    }
+    *cls = refine_class(*vendor, *cls, ad, len, nm);
+
+    if (name != NULL && name_cap > 0) {
+        snprintf(name, name_cap, "%s", nm);
+    }
+}
+
 /* ---------------- 对外接口 ---------------- */
 
 void tracker_scan_begin(void)
@@ -215,6 +274,7 @@ void tracker_scan_begin(void)
     s_raw_n = 0;
     s_count = 0;
     s_busy = true;
+    s_started_us = esp_timer_get_time();
     ESP_LOGI(TAG, "开始收集");
 }
 
@@ -268,8 +328,7 @@ void tracker_scan_feed(const uint8_t *addr, int8_t rssi, const uint8_t *ad, int 
         return;
     }
     char nm[17];
-    adv_name(ad, len, nm, sizeof(nm));
-    cls = refine_class(v, cls, ad, len, nm);
+    enrich(ad, len, &v, &conf, &cls, nm, sizeof(nm));
 
     s->vendor = v;
     s->conf = conf;
@@ -403,8 +462,7 @@ int tracker_scan_classify(const uint8_t *ad, int len, int *out_cls, int *out_con
     uint8_t conf = 0, flags = 0, cls = TRK_CLS_OTHER;
     uint8_t v = vendor_of_adv(ad, len, &conf, &flags, &cls);
     char nm[17];
-    adv_name(ad, len, nm, sizeof(nm));
-    cls = refine_class(v, cls, ad, len, nm);
+    enrich(ad, len, &v, &conf, &cls, nm, sizeof(nm));
     if (out_cls) {
         *out_cls = cls;
     }
@@ -415,4 +473,22 @@ int tracker_scan_classify(const uint8_t *ad, int len, int *out_cls, int *out_con
         snprintf(out_name, (size_t) name_cap, "%s", nm);
     }
     return v;
+}
+
+void tracker_scan_expect(uint32_t ms)
+{
+    s_expect_ms = ms;
+}
+
+uint32_t tracker_scan_elapsed_ms(void)
+{
+    if (!s_busy || s_started_us == 0) {
+        return 0;
+    }
+    return (uint32_t) ((esp_timer_get_time() - s_started_us) / 1000);
+}
+
+uint32_t tracker_scan_expect_ms(void)
+{
+    return s_expect_ms;
 }

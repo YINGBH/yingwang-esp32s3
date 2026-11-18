@@ -26,6 +26,13 @@ typedef enum {
     TRK_DULT,          /* 跨平台反跟踪广播（苹果+谷歌） */
     TRK_HUAWEI,        /* 华为（只能到厂商级） */
     TRK_XIAOMI,        /* 小米（只能到厂商级） */
+    TRK_OPPO,          /* OPPO（设备名/Fast Pair） */
+    TRK_VIVO,          /* vivo / iQOO */
+    TRK_HONOR,         /* 荣耀 */
+    TRK_REALME,        /* realme */
+    TRK_ONEPLUS,       /* 一加 */
+    TRK_MEIZU,         /* 魅族 */
+    TRK_ANDROID,       /* 其它安卓（Fast Pair 命中但认不出品牌） */
     TRK_VENDOR_COUNT
 } trk_vendor_t;
 
@@ -71,6 +78,15 @@ int tracker_scan_unknown_count(void);
 /** 调试：只分类一段广播（不记账）。返回厂商，out_cls/out_conf/out_name 可为 NULL */
 int tracker_scan_classify(const uint8_t *ad, int len, int *out_cls, int *out_conf,
                           char *out_name, int name_cap);
+
+/** 设定这一轮预期时长（给进度条用） */
+void tracker_scan_expect(uint32_t ms);
+
+/** 预期总时长（毫秒） */
+uint32_t tracker_scan_expect_ms(void);
+
+/** 本轮已经过多少毫秒（不在扫描返回 0） */
+uint32_t tracker_scan_elapsed_ms(void);
 
 /** 开始一轮：清空表 */
 void tracker_scan_begin(void);
