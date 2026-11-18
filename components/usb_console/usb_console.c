@@ -960,8 +960,16 @@ static void cli_task(void *arg)
             if (s_shot_guard) {
                 esp_timer_start_once(s_shot_guard, 30LL * 1000 * 1000);
             }
-            printf("@SHOT %u\n", (unsigned) (240 * 240 * 2));
-            fflush(stdout);
+            /* 头里带上长度和 xor8 校验，抓帧工具能立刻判断这一帧是否完整 */
+            {
+                const uint8_t *chk = (const uint8_t *) fb;
+                uint8_t x = 0;
+                for (size_t i = 0; i < 240 * 240 * 2; i++) {
+                    x ^= chk[i];
+                }
+                printf("@SHOT %u %02x\n", (unsigned) (240 * 240 * 2), x);
+                fflush(stdout);
+            }
             const uint8_t *p = (const uint8_t *) fb;
             size_t want = 240 * 240 * 2, done = 0;
             int64_t deadline = esp_timer_get_time() / 1000 + 30000;

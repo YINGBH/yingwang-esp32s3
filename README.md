@@ -127,6 +127,7 @@ python -m esptool --chip esp32s3 -p COM5 -b 921600 write_flash 0x0 yingwang-v2.1
 | [docs/固件与烧录.md](docs/固件与烧录.md) | 现成镜像 / 自己编译 / 四个分区怎么烧 |
 | [docs/串口命令.md](docs/串口命令.md) | 串口 / 网页后台能发哪些命令 |
 | [web/README.md](web/README.md) | USB 串口网页工具：看屏、改配置、传背景图、抓截图 |
+| [docs/功能巡检.md](docs/功能巡检.md) | 全功能巡检结论（含 WiFi 掉线观察项） |
 | [docs/代码审查.md](docs/代码审查.md) | 扫描功能的审查结论、已修/未修问题 |
 | [docs/追踪标签.md](docs/追踪标签.md) | **扫描页怎么用**，以及怎么加新厂商指纹（含原始载荷分析） |
 | [docs/踩坑记录.md](docs/踩坑记录.md) | 调试时踩过的坑和真实原因 |
