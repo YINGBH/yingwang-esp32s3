@@ -1612,11 +1612,14 @@ static void ensure_scan_tmo(void)
    不连接、不写特征，扫完自动结束。 */
 esp_err_t esl_ble_tracker_scan(uint32_t ms)
 {
-    if (s_state == ESL_CONNECTING || s_state == ESL_PUSHING) {
-        return ESP_ERR_INVALID_STATE;      /* 正在推图，别插队 */
-    }
     if (s_trk_mode) {
         return ESP_ERR_INVALID_STATE;      /* 已经有一轮在跑 */
+    }
+    if (s_state == ESL_CONNECTING || s_state == ESL_PUSHING) {
+        /* 用户手动触发的优先：中止当前推图，射频让出来 */
+        ESP_LOGW(TAG, "用户要求扫描，中止当前推图");
+        esl_ble_abort();
+        vTaskDelay(pdMS_TO_TICKS(300));
     }
     if (esl_ble_stack_ensure() != ESP_OK) {
         return ESP_ERR_INVALID_STATE;

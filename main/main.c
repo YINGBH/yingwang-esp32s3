@@ -857,6 +857,7 @@ static const char *trk_name(uint8_t v)
     case TRK_ONEPLUS:     return "一加";
     case TRK_MEIZU:       return "魅族";
     case TRK_ANDROID:     return "安卓";
+    case TRK_MICROSOFT:   return "微软";
     default:              return "未知";
     }
 }
@@ -909,6 +910,7 @@ static void draw_vendor_cell(int v, int n, int x, int y)
         case TRK_ONEPLUS: mark = "1+"; break;
         case TRK_MEIZU:   mark = "MZ"; break;
         case TRK_ANDROID: mark = "AN"; break;
+        case TRK_MICROSOFT: mark = "MS"; break;
         default:          break;
         }
         int n = (int) strlen(mark);
@@ -1013,7 +1015,8 @@ static void render_tracker(void)
 
     /* 第 3 段：厂商图标（固定顺序，华为优先，最多 4 个） */
     {
-        static const uint8_t ORDER[] = { TRK_HUAWEI, TRK_APPLE_OFB, TRK_XIAOMI,
+        static const uint8_t ORDER[] = { TRK_HUAWEI, TRK_MICROSOFT, TRK_APPLE_OFB,
+                                         TRK_XIAOMI,
                                          TRK_OPPO, TRK_VIVO, TRK_HONOR, TRK_REALME,
                                          TRK_ONEPLUS, TRK_MEIZU, TRK_ANDROID,
                                          TRK_GOOGLE_FMDN, TRK_SAMSUNG, TRK_TILE,

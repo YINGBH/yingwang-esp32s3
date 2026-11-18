@@ -33,6 +33,9 @@ static const uint32_t vendor_icon_huawei[20] = { 0x00000, 0x00000, 0x00000, 0x03
 /* xiaomi */
 static const uint32_t vendor_icon_xiaomi[20] = { 0x07FE0, 0x1FFF8, 0x3FFFC, 0x7FFFE, 0x7FFFE, 0xFFFFF, 0xF01CF, 0xF00CF, 0xF3C4F, 0xF264F, 0xF264F, 0xF264F, 0xF264F, 0xF264F, 0xFFFFF, 0x7FFFE, 0x7FFFE, 0x3FFFC, 0x1FFF8, 0x07FE0 };
 
+/* microsoft */
+static const uint32_t vendor_icon_microsoft[20] = { 0x00000, 0x00000, 0x3FCFF, 0x3FCFF, 0x3FCFF, 0x3FCFF, 0x3FCFF, 0x3FCFF, 0x3FCFF, 0x3FCFF, 0x00000, 0x00000, 0x3FCFF, 0x3FCFF, 0x3FCFF, 0x3FCFF, 0x3FCFF, 0x3FCFF, 0x3FCFF, 0x3FCFF };
+
 /* 按 trk_vendor_t 顺序取图标；DULT 用蓝牙符号 */
 static inline const uint32_t *vendor_icon_of(int v)
 {
@@ -44,6 +47,7 @@ static inline const uint32_t *vendor_icon_of(int v)
     case TRK_DULT: return vendor_icon_dult;
     case TRK_HUAWEI: return vendor_icon_huawei;
     case TRK_XIAOMI: return vendor_icon_xiaomi;
+    case TRK_MICROSOFT: return vendor_icon_microsoft;
     default: return NULL;
     }
 }

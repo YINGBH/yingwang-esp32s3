@@ -33,6 +33,7 @@ typedef enum {
     TRK_ONEPLUS,       /* 一加 */
     TRK_MEIZU,         /* 魅族 */
     TRK_ANDROID,       /* 其它安卓（Fast Pair 命中但认不出品牌） */
+    TRK_MICROSOFT,     /* 微软（Swift Pair / Windows 主机名广播） */
     TRK_VENDOR_COUNT
 } trk_vendor_t;
 

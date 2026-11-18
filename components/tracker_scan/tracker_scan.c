@@ -80,7 +80,7 @@ static uint8_t vendor_of_adv(const uint8_t *ad, int n, uint8_t *conf,
                 /* 微软 Swift Pair：只认子类型，不看载荷（加密随机字节会被当成名字） */
                 *conf = 60;
                 *cls = TRK_CLS_COMPUTER;
-                return TRK_UNKNOWN;
+                return TRK_MICROSOFT;
             }
             if (cid == 0x027D) { *conf = 45; *cls = TRK_CLS_PHONE; return TRK_HUAWEI; }
             if (cid == 0x0075) { *conf = 50; *cls = TRK_CLS_PHONE; return TRK_SAMSUNG; }
@@ -289,6 +289,9 @@ static void enrich(const uint8_t *ad, int len, uint8_t *vendor, uint8_t *conf,
     if (nm[0] != '\0') {
         if (looks_hostname(nm, (int) strlen(nm))) {
             *cls = TRK_CLS_COMPUTER;
+            if (*vendor == TRK_UNKNOWN) {
+                *vendor = TRK_MICROSOFT;   /* LAPTOP-/DESKTOP- 主机名基本就是 Windows */
+            }
             if (*conf < 50) {
                 *conf = 50;     /* 主机名是设备自报的 */
             }

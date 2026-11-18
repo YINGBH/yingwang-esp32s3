@@ -11,7 +11,7 @@ import urllib.request
 from PIL import Image
 
 W = r"C:\Users\31658\Documents\deepseek-harness\default-workspace"
-OUT = os.path.join(W, "yingwang-opensource", "components", "tracker_scan", "vendor_icons.h")
+OUT = os.path.join(W, "yingwang-opensource", "components", "tracker_scan", "include", "vendor_icons.h")
 ICONDIR = os.path.join(W, "tools_icons")
 os.makedirs(ICONDIR, exist_ok=True)
 
@@ -23,6 +23,7 @@ VENDORS = [
     ("dult", "bluetooth", "TRK_DULT"),     # DULT 没有官方图标，用蓝牙符号
     ("huawei", "huawei", "TRK_HUAWEI"),
     ("xiaomi", "xiaomi", "TRK_XIAOMI"),
+    ("microsoft", "microsoft", "TRK_MICROSOFT"),
 ]
 
 SIZE = 20          # 位图 20x20
@@ -89,6 +90,21 @@ def to_bitmap(img):
     return rows
 
 
+def ms_bitmap():
+    """手绘 Windows 四方块：每块 8x8，间隔 2px，20x20 内居中"""
+    S = SIZE
+    rows = [0] * S
+    for y in range(S):
+        bits = 0
+        for x in range(S):
+            in_x = (2 <= x < 10) or (12 <= x < 20)
+            in_y = (2 <= y < 10) or (12 <= y < 20)
+            if in_x and in_y:
+                bits |= 1 << (S - 1 - x)
+        rows[y] = bits
+    return rows
+
+
 def main():
     svgs = {name: fetch(slug) for name, slug, _ in VENDORS}
     # 统一给 SVG 加尺寸（simple-icons 默认 24x24，但内联时可能撑满）
@@ -99,8 +115,10 @@ def main():
     sheet = Image.open(png)
     print("渲染尺寸:", sheet.size)
 
-    bm = {}
+    bm = {"microsoft": ms_bitmap()}
     for i, (name, _, enum) in enumerate(VENDORS):
+        if name in bm:
+            continue                      # 手绘的跳过
         col, row = i % 2, i // 2
         box = (col * CELL, row * CELL, (col + 1) * CELL, (row + 1) * CELL)
         bm[name] = to_bitmap(sheet.crop(box))
