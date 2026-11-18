@@ -29,6 +29,16 @@ typedef enum {
     TRK_VENDOR_COUNT
 } trk_vendor_t;
 
+/* 设备类型 */
+typedef enum {
+    TRK_CLS_TAG = 0,   /* 追踪标签 */
+    TRK_CLS_PHONE,     /* 手机 / 平板 */
+    TRK_CLS_COMPUTER,  /* 电脑 / 外设 */
+    TRK_CLS_AUDIO,     /* 耳机 / 音箱 */
+    TRK_CLS_OTHER,
+    TRK_CLS_COUNT
+} trk_class_t;
+
 /* 一个被扫到的设备（对外快照） */
 typedef struct {
     uint8_t  addr[6];
@@ -37,6 +47,7 @@ typedef struct {
     int8_t   rssi_last;
     uint16_t seen;
     uint32_t dur_ms;
+    uint8_t  cls;          /* trk_class_t */
     uint8_t  flags;        /* bit0 near_owner（DULT/Apple） */
 } trk_entry_t;
 
@@ -49,6 +60,8 @@ typedef struct {
     uint8_t len;
     uint8_t data[31];
 } trk_raw_t;
+
+int tracker_scan_class_count(trk_class_t c);
 
 /** 取未识别设备的原始广播，返回条数 */
 int tracker_scan_raw(trk_raw_t *out, int max);

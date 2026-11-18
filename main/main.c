@@ -849,7 +849,7 @@ static const char *trk_name(uint8_t v)
     case TRK_DULT:        return "DULT";
     case TRK_HUAWEI:      return "华为";
     case TRK_XIAOMI:      return "小米";
-    default:              return "其它";
+    default:              return "未知";
     }
 }
 
@@ -896,6 +896,17 @@ static void draw_vendor_cell(int v, int n, int x, int y)
     }
 }
 
+static const char *cls_name(uint8_t c)
+{
+    switch (c) {
+    case TRK_CLS_TAG:      return "标签";
+    case TRK_CLS_PHONE:    return "手机";
+    case TRK_CLS_COMPUTER: return "电脑";
+    case TRK_CLS_AUDIO:    return "耳机";
+    default:               return "其它";
+    }
+}
+
 static void render_tracker(void)
 {
     char buf[64];
@@ -923,13 +934,33 @@ static void render_tracker(void)
     bsp_display_text(8, y, buf, TH_FG, TH_BG, 1);
     y += 18;
 
-    snprintf(buf, sizeof(buf), "用时 %lu.%lu 秒  按 BOOT 重扫",
+    snprintf(buf, sizeof(buf), "用时 %lu.%lu 秒 BOOT 重扫",
              (unsigned long) (tracker_scan_last_cost_ms() / 1000),
              (unsigned long) (tracker_scan_last_cost_ms() % 1000 / 100));
     bsp_display_text(8, y, buf, TH_DIM, TH_BG, 1);
     y += 26;
 
-    /* 厂商格子：两行，每行最多 4 个 */
+    /* 类型汇总：标签 / 手机 / 电脑 / 耳机 */
+    {
+        int y2 = y;
+        int col = 0;
+        for (int c = 0; c < TRK_CLS_COUNT; c++) {
+            int n = tracker_scan_class_count((trk_class_t) c);
+            if (n <= 0) {
+                continue;
+            }
+            snprintf(buf, sizeof(buf), "%s %d", cls_name((uint8_t) c), n);
+            bsp_display_text(8 + col * 112, y2, buf, TH_FG, TH_BG, 1);
+            col++;
+            if (col == 2) {
+                col = 0;
+                y2 += 18;
+            }
+        }
+        y = y2 + (col ? 22 : 4);
+    }
+
+    /* 厂商格子：两行，每行最多 4 个（带 logo） */
     static const uint8_t order[] = { TRK_APPLE_OFB, TRK_GOOGLE_FMDN, TRK_SAMSUNG,
                                      TRK_TILE, TRK_DULT, TRK_HUAWEI, TRK_XIAOMI };
     int shown = 0;
@@ -940,15 +971,17 @@ static void render_tracker(void)
         }
         int slot = shown % 4;
         int row = shown / 4;
-        draw_vendor_cell(order[i], n, 8 + slot * 56, y + row * 30);
+        draw_vendor_cell(order[i], n, 8 + slot * 56, y + row * 28);
         shown++;
     }
-    y += ((shown + 3) / 4) * 30 + 6;
+    if (shown > 0) {
+        y += ((shown + 3) / 4) * 28 + 4;
+    }
 
     /* 未识别的设备：只报数量，原始载荷用 SCANRAW 导出 */
     int unk = tracker_scan_unknown_count();
     if (unk > 0) {
-        snprintf(buf, sizeof(buf), "未知 %d 台（SCANRAW 导出）", unk);
+        snprintf(buf, sizeof(buf), "未知 %d 台", unk);
         bsp_display_text(8, y, buf, TH_DIM, TH_BG, 1);
         y += 18;
     }
@@ -960,8 +993,9 @@ static void render_tracker(void)
     trk_entry_t top[3];
     int n = tracker_scan_top(top, 3);
     for (int i = 0; i < n && y <= 212; i++) {
-        snprintf(buf, sizeof(buf), "%s %d dBm %d 包",
-                 trk_name(top[i].vendor), top[i].rssi_last, (int) top[i].seen);
+        snprintf(buf, sizeof(buf), "%s %s %d dBm %d 包",
+                 trk_name(top[i].vendor), cls_name(top[i].cls),
+                 top[i].rssi_last, (int) top[i].seen);
         bsp_display_text(12, y, buf, TH_FG, TH_BG, 1);
         y += 17;
     }
