@@ -872,9 +872,10 @@ static void cli_task(void *arg)
             printf("@{\"ok\":true,\"total\":%d,\"cost_ms\":%u,\"items\":[",
                    tracker_scan_count(), (unsigned) tracker_scan_last_cost_ms());
             for (int i = 0; i < n; i++) {
-                printf("%s{\"vendor\":%d,\"conf\":%d,\"rssi\":%d,\"seen\":%d}",
-                       i ? "," : "", top[i].vendor, top[i].conf,
-                       top[i].rssi_last, (int) top[i].seen);
+                printf("%s{\"vendor\":%d,\"cls\":%d,\"conf\":%d,\"rssi\":%d,"
+                       "\"seen\":%d,\"name\":\"%s\"}",
+                       i ? "," : "", top[i].vendor, top[i].cls, top[i].conf,
+                       top[i].rssi_last, (int) top[i].seen, top[i].name);
             }
             printf("]}\n");
             fflush(stdout);

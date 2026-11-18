@@ -60,6 +60,7 @@
 #include "netstats.h"
 #include "tracker_scan.h"
 #include "vendor_icons.h"
+#include "type_icons.h"
 #include "beep.h"
 #include "logring.h"
 
@@ -984,24 +985,29 @@ static void render_tracker(void)
     snprintf(buf, sizeof(buf), "共 %d 台", tracker_scan_count());
     bsp_display_text(8, y0, buf, TH_FG, TH_BG, 2);
 
-    /* 第 2 段：类型小计（y0+32，只列非零，最多 3 项一行） */
+    /* 第 2 段：类型小计（图标 + 数量，y0+32） */
     {
-        static const struct { int cls; const char *nm; } CL[] = {
-            { TRK_CLS_TAG, "标签" }, { TRK_CLS_PHONE, "手机" },
-            { TRK_CLS_COMPUTER, "电脑" }, { TRK_CLS_AUDIO, "耳机" },
-        };
-        int x = 8, cnt = 0;
-        for (int i = 0; i < 4; i++) {
-            int n = tracker_scan_class_count((trk_class_t) CL[i].cls);
+        static const int CLS_ORDER[] = { TRK_CLS_PHONE, TRK_CLS_COMPUTER,
+                                        TRK_CLS_TAG, TRK_CLS_AUDIO,
+                                        TRK_CLS_OTHER };
+        int x = 8;
+        int shown = 0;
+        for (int i = 0; i < 5 && shown < 4; i++) {
+            int n = tracker_scan_class_count((trk_class_t) CLS_ORDER[i]);
             if (n <= 0) {
                 continue;
             }
-            snprintf(buf, sizeof(buf), "%s %d", CL[i].nm, n);
-            bsp_display_text(x, y0 + 32, buf, TH_OK, TH_BG, 1);
-            x += 62;
-            if (++cnt >= 3) {
-                break;
+            const uint32_t *ic = type_icon_of(CLS_ORDER[i]);
+            if (ic != NULL) {
+                draw_icon(ic, x, y0 + 32, TH_OK);
+                snprintf(buf, sizeof(buf), "%d", n);
+                bsp_display_text(x + TYPE_ICON_SIZE + 2, y0 + 38, buf, TH_OK, TH_BG, 1);
+            } else {
+                snprintf(buf, sizeof(buf), "%s %d", cls_name((uint8_t) CLS_ORDER[i]), n);
+                bsp_display_text(x, y0 + 38, buf, TH_OK, TH_BG, 1);
             }
+            x += 52;
+            shown++;
         }
     }
 
