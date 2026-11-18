@@ -40,6 +40,20 @@ typedef struct {
     uint8_t  flags;        /* bit0 near_owner（DULT/Apple） */
 } trk_entry_t;
 
+/* 未识别设备的原始载荷（用于离线分析、加新指纹） */
+#define TRK_RAW_MAX 16
+typedef struct {
+    uint8_t addr[6];
+    int8_t  rssi;
+    uint16_t seen;
+    uint8_t len;
+    uint8_t data[31];
+} trk_raw_t;
+
+/** 取未识别设备的原始广播，返回条数 */
+int tracker_scan_raw(trk_raw_t *out, int max);
+int tracker_scan_unknown_count(void);
+
 /** 开始一轮：清空表 */
 void tracker_scan_begin(void);
 

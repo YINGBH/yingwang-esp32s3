@@ -834,6 +834,21 @@ static void cli_task(void *arg)
                 reply_err("busy");
             }
             fflush(stdout);
+        } else if (strcmp(line, "SCANRAW") == 0) {
+            /* 导出未识别设备的原始广播（hex），用于加新厂商指纹 */
+            trk_raw_t raw[TRK_RAW_MAX];
+            int n = tracker_scan_raw(raw, TRK_RAW_MAX);
+            printf("@{\"ok\":true,\"count\":%d,\"items\":[", n);
+            for (int i = 0; i < n; i++) {
+                printf("%s{\"rssi\":%d,\"seen\":%d,\"hex\":\"",
+                       i ? "," : "", raw[i].rssi, (int) raw[i].seen);
+                for (int k = 0; k < raw[i].len; k++) {
+                    printf("%02x", raw[i].data[k]);
+                }
+                printf("\"}");
+            }
+            printf("]}\n");
+            fflush(stdout);
         } else if (strcmp(line, "SCANTOP") == 0) {
             trk_entry_t top[8];
             int n = tracker_scan_top(top, 8);

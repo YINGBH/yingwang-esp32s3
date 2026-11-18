@@ -945,6 +945,14 @@ static void render_tracker(void)
     }
     y += ((shown + 3) / 4) * 30 + 6;
 
+    /* 未识别的设备：只报数量，原始载荷用 SCANRAW 导出 */
+    int unk = tracker_scan_unknown_count();
+    if (unk > 0) {
+        snprintf(buf, sizeof(buf), "未知 %d 台（SCANRAW 导出）", unk);
+        bsp_display_text(8, y, buf, TH_DIM, TH_BG, 1);
+        y += 18;
+    }
+
     if (y < 196) {
         bsp_display_text(8, y, "最活跃", TH_DIM, TH_BG, 1);
         y += 18;

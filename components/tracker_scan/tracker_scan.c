@@ -22,6 +22,10 @@ typedef struct {
 } slot_t;
 
 static slot_t s_slots[MAX_ENTRIES];
+
+/* 未识别设备的原始载荷 */
+static trk_raw_t s_raw[TRK_RAW_MAX];
+static int s_raw_n = 0;
 static int s_count = 0;
 static volatile bool s_busy = false;
 static int64_t s_finished_us = 0;
@@ -94,6 +98,8 @@ static uint8_t vendor_of_adv(const uint8_t *ad, int n, uint8_t *conf, uint8_t *f
 void tracker_scan_begin(void)
 {
     memset(s_slots, 0, sizeof(s_slots));
+    memset(s_raw, 0, sizeof(s_raw));
+    s_raw_n = 0;
     s_count = 0;
     s_busy = true;
     ESP_LOGI(TAG, "开始收集");
@@ -107,6 +113,22 @@ void tracker_scan_feed(const uint8_t *addr, int8_t rssi, const uint8_t *ad, int 
     uint8_t conf = 0, flags = 0;
     uint8_t v = vendor_of_adv(ad, len, &conf, &flags);
     if (v == TRK_UNKNOWN) {
+        /* 未知厂商：留原始载荷，方便事后再分析/加指纹 */
+        for (int i = 0; i < s_raw_n; i++) {
+            if (memcmp(s_raw[i].addr, addr, 6) == 0) {
+                s_raw[i].rssi = rssi;
+                s_raw[i].seen++;
+                return;
+            }
+        }
+        if (s_raw_n < TRK_RAW_MAX) {
+            trk_raw_t *r = &s_raw[s_raw_n++];
+            memcpy(r->addr, addr, 6);
+            r->rssi = rssi;
+            r->seen = 1;
+            r->len = (uint8_t) (len > (int) sizeof(r->data) ? sizeof(r->data) : len);
+            memcpy(r->data, ad, r->len);
+        }
         return;
     }
 
@@ -224,4 +246,19 @@ void tracker_scan_clear(void)
     s_busy = false;
     s_cost_ms = 0;
     s_finished_us = 0;
+}
+
+int tracker_scan_raw(trk_raw_t *out, int max)
+{
+    if (out == NULL || max <= 0) {
+        return 0;
+    }
+    int n = s_raw_n < max ? s_raw_n : max;
+    memcpy(out, s_raw, sizeof(trk_raw_t) * (size_t) n);
+    return n;
+}
+
+int tracker_scan_unknown_count(void)
+{
+    return s_raw_n;
 }
