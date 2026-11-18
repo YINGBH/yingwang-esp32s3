@@ -827,7 +827,7 @@ static void cli_task(void *arg)
             int sec = (line[4] == ' ') ? atoi(line + 5) : 8;
             if (sec < 1) sec = 1;
             if (sec > 30) sec = 30;
-            esp_err_t e = esl_ble_tracker_scan((uint32_t) sec * 1000);
+            esp_err_t e = esl_ble_tracker_scan_async((uint32_t) sec * 1000);
             if (e == ESP_OK) {
                 printf("@{\"ok\":true,\"sec\":%d}\n", sec);
             } else {

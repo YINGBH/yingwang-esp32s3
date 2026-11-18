@@ -952,7 +952,7 @@ static void render_tracker(void)
 
         bsp_display_text(8, y0, "扫描中", TH_ACCENT, TH_BG, 1);
         snprintf(buf, sizeof(buf), "%d%%", pct);
-        bsp_display_text(200, y0, buf, TH_DIM, TH_BG, 1);
+        bsp_display_text(188, y0, buf, TH_DIM, TH_BG, 1);
 
         const int bx = 8, by = y0 + 26, bw = 224, bh = 12;
         bsp_display_fill_rect(bx, by, bw, bh, TH_PANEL);
@@ -3346,8 +3346,8 @@ static void on_button(bsp_button_t btn, void *user)
 
     /* 扫描页：短按 BOOT 手动扫一次 */
     if (s_screen == SC_TRACKER && btn == BSP_BTN_BOOT) {
-        if (esl_ble_tracker_scan(8000) == ESP_OK) {
-            ESP_LOGI(TAG, "手动扫描：开始 8 秒");
+        if (esl_ble_tracker_scan_async(8000) == ESP_OK) {
+            ESP_LOGI(TAG, "手动扫描：开始 8 秒（异步）");
         } else {
             ESP_LOGW(TAG, "手动扫描：正在扫或启动失败");
         }

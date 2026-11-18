@@ -1612,9 +1612,7 @@ static void ensure_scan_tmo(void)
    不连接、不写特征，扫完自动结束。 */
 esp_err_t esl_ble_tracker_scan(uint32_t ms)
 {
-    if (s_trk_mode) {
-        return ESP_ERR_INVALID_STATE;      /* 已经有一轮在跑 */
-    }
+    bool from_async = s_trk_mode;          /* async 已经置位并 begin 过 */
     if (s_state == ESL_CONNECTING || s_state == ESL_PUSHING) {
         /* 用户手动触发的优先：中止当前推图，射频让出来 */
         ESP_LOGW(TAG, "用户要求扫描，中止当前推图");
@@ -1636,9 +1634,11 @@ esp_err_t esl_ble_tracker_scan(uint32_t ms)
         ble_gap_disc_cancel();
         s_scanning = false;
     }
-    tracker_scan_expect(ms);
-    tracker_scan_begin();
-    s_trk_mode = true;
+    if (!from_async) {
+        tracker_scan_expect(ms);
+        tracker_scan_begin();
+        s_trk_mode = true;
+    }
     s_trk_start_us = esp_timer_get_time();
     if (ble_gap_disc(s_own_addr_type, (int32_t) ms, &p, gap_event, NULL) != 0) {
         s_trk_mode = false;
@@ -1649,6 +1649,33 @@ esp_err_t esl_ble_tracker_scan(uint32_t ms)
     s_scanning = true;
     set_status(ESL_SCANNING, "扫描标签中");
     ESP_LOGI(TAG, "标签扫描开始 %u ms", (unsigned) ms);
+    return ESP_OK;
+}
+
+/* 扫描任务：把会阻塞的部分（协议栈初始化）挪出调用者上下文 */
+static void trk_task(void *arg)
+{
+    uint32_t ms = (uint32_t) (uintptr_t) arg;
+    if (esl_ble_tracker_scan(ms) != ESP_OK) {
+        tracker_scan_finish(0);
+    }
+    vTaskDelete(NULL);
+}
+
+esp_err_t esl_ble_tracker_scan_async(uint32_t ms)
+{
+    if (s_trk_mode) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    /* 立刻进入"扫描中"状态：页面马上有反馈，进度条也从现在开始算 */
+    s_trk_mode = true;
+    tracker_scan_expect(ms);
+    tracker_scan_begin();
+    if (xTaskCreate(trk_task, "trkscan", 4096, (void *) (uintptr_t) ms, 3, NULL) != pdPASS) {
+        s_trk_mode = false;
+        tracker_scan_finish(0);
+        return ESP_ERR_NO_MEM;
+    }
     return ESP_OK;
 }
 

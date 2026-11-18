@@ -233,7 +233,9 @@ static bool name_looks_computer(const char *s)
 {
     static const char *kw[] = { "DESKTOP-", "LAPTOP-", "MacBook", "ThinkPad",
                                 "Notebook", "Windows", "PC-", "iMac", "Mac mini",
-                                "Surface" };
+                                "Surface", "VivoBook", "ZenBook", "IdeaPad",
+                                "ThinkBook", "Latitude", "Aspire", "Chromebook",
+                                "MateBook", "RedmiBook", "MagicBook" };
     for (size_t i = 0; i < sizeof(kw) / sizeof(kw[0]); i++) {
         if (strcasestr(s, kw[i]) != NULL) {
             return true;
@@ -296,6 +298,16 @@ static void enrich(const uint8_t *ad, int len, uint8_t *vendor, uint8_t *conf,
                 *conf = 50;     /* 主机名是设备自报的 */
             }
         }
+        if (name_looks_computer(nm)) {
+            /* 笔记本型号名优先：否则 "VivoBook" 会被当成 vivo 手机 */
+            *cls = TRK_CLS_COMPUTER;
+            if (*vendor == TRK_UNKNOWN && strcasestr(nm, "MacBook") != NULL) {
+                *vendor = TRK_APPLE_OFB;
+            }
+            if (*conf < 50) {
+                *conf = 50;
+            }
+        } else {
         uint8_t nv = name_to_vendor(nm);
         if (nv != TRK_UNKNOWN) {
             *vendor = nv;
@@ -305,6 +317,7 @@ static void enrich(const uint8_t *ad, int len, uint8_t *vendor, uint8_t *conf,
             if (*conf < 50) {
                 *conf = 50;
             }
+        }
         }
     }
     *cls = refine_class(*vendor, *cls, ad, len, nm);
