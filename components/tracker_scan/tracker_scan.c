@@ -1,0 +1,227 @@
+#include "tracker_scan.h"
+
+#include <string.h>
+
+#include "esp_log.h"
+#include "esp_timer.h"
+
+static const char *TAG = "trk_scan";
+
+#define MAX_ENTRIES 64
+
+typedef struct {
+    uint8_t  addr[6];
+    uint8_t  vendor;
+    uint8_t  conf;
+    uint8_t  flags;
+    int8_t   rssi_last;
+    uint16_t seen;
+    int64_t  first_us;
+    int64_t  last_us;
+    bool     used;
+} slot_t;
+
+static slot_t s_slots[MAX_ENTRIES];
+static int s_count = 0;
+static volatile bool s_busy = false;
+static int64_t s_finished_us = 0;
+static uint32_t s_cost_ms = 0;
+
+/* ---------------- 指纹匹配 ---------------- */
+
+static uint8_t vendor_of_adv(const uint8_t *ad, int n, uint8_t *conf, uint8_t *flags)
+{
+    *conf = 0;
+    *flags = 0;
+    for (int i = 0; i + 1 < n;) {
+        uint8_t len = ad[i];
+        if (len == 0 || i + len > n) {
+            break;
+        }
+        uint8_t type = ad[i + 1];
+        const uint8_t *d = ad + i + 2;
+        int dlen = len - 1;
+
+        if (type == 0xFF && dlen >= 2) {              /* Manufacturer Specific */
+            uint16_t cid = (uint16_t) (d[0] | (d[1] << 8));
+            if (cid == 0x004C && dlen >= 4) {         /* Apple */
+                if (d[2] == 0x12 && dlen >= 3 + 27) {
+                    *conf = 95;
+                    if (d[3] & 0x04) {
+                        *flags |= 0x01;               /* near_owner */
+                    }
+                    return TRK_APPLE_OFB;
+                }
+                if (d[2] == 0x07) {                   /* AirPods 等，排除 */
+                    return TRK_UNKNOWN;
+                }
+            }
+            if (cid == 0x027D) { *conf = 45; return TRK_HUAWEI; }
+            if (cid == 0x0075) { *conf = 50; return TRK_SAMSUNG; }
+            if (cid == 0x038F) { *conf = 35; return TRK_XIAOMI; }
+        }
+
+        if (type == 0x16 && dlen >= 2) {              /* Service Data 16-bit */
+            uint16_t uuid = (uint16_t) (d[0] | (d[1] << 8));
+            switch (uuid) {
+            case 0xFEAA:                              /* Google FMDN */
+                *conf = 90;
+                if (dlen >= 3 && d[2] == 0x41) {
+                    *flags |= 0x02;                   /* separated */
+                }
+                return TRK_GOOGLE_FMDN;
+            case 0xFCB2:                              /* DULT */
+                *conf = 90;
+                if (dlen >= 16 && (d[15] & 0x01)) {
+                    *flags |= 0x01;
+                }
+                return TRK_DULT;
+            case 0xFD5A: *conf = 85; return TRK_SAMSUNG;
+            case 0xFEED:
+            case 0xFEEC:
+            case 0xFE84: *conf = 80; return TRK_TILE;
+            case 0xFE95: *conf = 35; return TRK_XIAOMI;
+            default: break;
+            }
+        }
+        i += len + 1;
+    }
+    return TRK_UNKNOWN;
+}
+
+/* ---------------- 对外接口 ---------------- */
+
+void tracker_scan_begin(void)
+{
+    memset(s_slots, 0, sizeof(s_slots));
+    s_count = 0;
+    s_busy = true;
+    ESP_LOGI(TAG, "开始收集");
+}
+
+void tracker_scan_feed(const uint8_t *addr, int8_t rssi, const uint8_t *ad, int len)
+{
+    if (addr == NULL || ad == NULL || len <= 0) {
+        return;
+    }
+    uint8_t conf = 0, flags = 0;
+    uint8_t v = vendor_of_adv(ad, len, &conf, &flags);
+    if (v == TRK_UNKNOWN) {
+        return;
+    }
+
+    slot_t *s = NULL;
+    for (int i = 0; i < MAX_ENTRIES; i++) {
+        if (s_slots[i].used && memcmp(s_slots[i].addr, addr, 6) == 0) {
+            s = &s_slots[i];
+            break;
+        }
+    }
+    if (s == NULL) {
+        for (int i = 0; i < MAX_ENTRIES; i++) {
+            if (!s_slots[i].used) {
+                s = &s_slots[i];
+                s->used = true;
+                memcpy(s->addr, addr, 6);
+                s->first_us = esp_timer_get_time();
+                s_count++;
+                break;
+            }
+        }
+    }
+    if (s == NULL) {
+        return;
+    }
+    s->vendor = v;
+    s->conf = conf;
+    s->flags = flags;
+    s->rssi_last = rssi;
+    s->seen++;
+    s->last_us = esp_timer_get_time();
+}
+
+void tracker_scan_finish(uint32_t cost_ms)
+{
+    s_busy = false;
+    s_cost_ms = cost_ms;
+    s_finished_us = esp_timer_get_time();
+    ESP_LOGI(TAG, "结束：%d 台设备，用时 %u ms", s_count, (unsigned) cost_ms);
+}
+
+bool tracker_scan_busy(void)
+{
+    return s_busy;
+}
+
+int tracker_scan_count(void)
+{
+    return s_count;
+}
+
+uint32_t tracker_scan_last_cost_ms(void)
+{
+    return s_cost_ms;
+}
+
+uint32_t tracker_scan_last_age_ms(void)
+{
+    if (s_finished_us == 0) {
+        return 0;
+    }
+    return (uint32_t) ((esp_timer_get_time() - s_finished_us) / 1000);
+}
+
+int tracker_scan_vendor_count(trk_vendor_t v)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_ENTRIES; i++) {
+        if (s_slots[i].used && s_slots[i].vendor == v) {
+            n++;
+        }
+    }
+    return n;
+}
+
+int tracker_scan_top(trk_entry_t *out, int max)
+{
+    if (out == NULL || max <= 0) {
+        return 0;
+    }
+    bool taken[MAX_ENTRIES] = { false };
+    int n = 0;
+    while (n < max) {
+        int best = -1;
+        for (int i = 0; i < MAX_ENTRIES; i++) {
+            if (!s_slots[i].used || taken[i]) {
+                continue;
+            }
+            if (best < 0 || s_slots[i].seen > s_slots[best].seen ||
+                (s_slots[i].seen == s_slots[best].seen &&
+                 s_slots[i].rssi_last > s_slots[best].rssi_last)) {
+                best = i;
+            }
+        }
+        if (best < 0) {
+            break;
+        }
+        taken[best] = true;
+        memcpy(out[n].addr, s_slots[best].addr, 6);
+        out[n].vendor = s_slots[best].vendor;
+        out[n].conf = s_slots[best].conf;
+        out[n].flags = s_slots[best].flags;
+        out[n].rssi_last = s_slots[best].rssi_last;
+        out[n].seen = s_slots[best].seen;
+        out[n].dur_ms = (uint32_t) ((s_slots[best].last_us - s_slots[best].first_us) / 1000);
+        n++;
+    }
+    return n;
+}
+
+void tracker_scan_clear(void)
+{
+    memset(s_slots, 0, sizeof(s_slots));
+    s_count = 0;
+    s_busy = false;
+    s_cost_ms = 0;
+    s_finished_us = 0;
+}

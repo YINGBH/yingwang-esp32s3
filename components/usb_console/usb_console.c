@@ -1,5 +1,6 @@
 #include "usb_console.h"
 #include "netstats.h"
+#include "tracker_scan.h"
 void ui_replay_boot_anim(int speed);
 void ui_boot_hint(const char *text);
 void ui_unfreeze(void);
@@ -822,6 +823,29 @@ static void cli_task(void *arg)
         } else if (strcmp(line, "BOOTANIM") == 0) {
             ui_replay_boot_anim(4);          /* 慢 4 倍，方便看/截图 */
             reply_ok();
+        } else if (strcmp(line, "SCAN") == 0 || strncmp(line, "SCAN ", 5) == 0) {
+            int sec = (line[4] == ' ') ? atoi(line + 5) : 8;
+            if (sec < 1) sec = 1;
+            if (sec > 30) sec = 30;
+            esp_err_t e = esl_ble_tracker_scan((uint32_t) sec * 1000);
+            if (e == ESP_OK) {
+                printf("@{\"ok\":true,\"sec\":%d}\n", sec);
+            } else {
+                reply_err("busy");
+            }
+            fflush(stdout);
+        } else if (strcmp(line, "SCANTOP") == 0) {
+            trk_entry_t top[8];
+            int n = tracker_scan_top(top, 8);
+            printf("@{\"ok\":true,\"total\":%d,\"cost_ms\":%u,\"items\":[",
+                   tracker_scan_count(), (unsigned) tracker_scan_last_cost_ms());
+            for (int i = 0; i < n; i++) {
+                printf("%s{\"vendor\":%d,\"conf\":%d,\"rssi\":%d,\"seen\":%d}",
+                       i ? "," : "", top[i].vendor, top[i].conf,
+                       top[i].rssi_last, (int) top[i].seen);
+            }
+            printf("]}\n");
+            fflush(stdout);
         } else if (strcmp(line, "NETSTAT") == 0) {
             /* 拉一次仓库里的统计（联网才有用），返回人数和我的百分位 */
             esp_err_t e = netstats_refresh();

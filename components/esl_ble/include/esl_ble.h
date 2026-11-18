@@ -64,6 +64,14 @@ void esl_ble_release(void);
 /** 墨水屏界面自定义：布局 0 标准 / 1 大字时间；opts 见 ESL_OPT_* */
 void esl_ble_set_ui(uint8_t layout, uint8_t opts, const char *text);
 
+/* ---- 给其它组件用：按需初始化 BLE 协议栈 / 查链路是否忙 ---- */
+esp_err_t esl_ble_stack_ensure(void);
+void esl_ble_abort(void);   /* 中止当前扫描/连接/推图 */
+esp_err_t esl_ble_tracker_scan(uint32_t ms);  /* 被动扫追踪标签 */
+void esl_ble_stack_hold(bool on);  /* 占用协议栈，禁止被释放 */
+bool esl_ble_link_busy(void);
+
+
 
 uint8_t esl_ble_ui_layout(void);
 uint8_t esl_ble_ui_opts(void);

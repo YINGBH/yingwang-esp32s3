@@ -58,6 +58,8 @@
 #include "captcha_loader.h"
 #include "stats.h"
 #include "netstats.h"
+#include "tracker_scan.h"
+#include "vendor_icons.h"
 #include "beep.h"
 #include "logring.h"
 
@@ -77,6 +79,7 @@ typedef enum {
     SC_STOPWATCH,        /* 秒表：BOOT 开始/暂停，UP 归零，DN 翻页 */
     SC_ALARMS,           /* 作息页：显示 4 个闹钟 + 倒计时 + 秒表（只读汇总） */
     SC_STATS,            /* 统计页：每天登录成功/失败、连续成功天数 */
+    SC_TRACKER,          /* 扫描页：手动扫一次 BLE 追踪标签 */
     SC_MODEL,            /* 验证码模型信息：不进翻页循环，只能状态页长按 BOOT 进 */
     SC_CAPTCHA,          /* 不是可循环页面，登录时临时占用 */
     SC_ALARM,            /* 闹钟响铃页：不进翻页循环 */
@@ -834,6 +837,127 @@ static void draw_bell_icon(int x, int y, uint16_t color)
 #define COL_TIME  26
 #define COL_WD    112
 #define COL_EN    200
+
+/* 扫描页：手动扫一次 BLE 追踪标签，只显示统计 */
+static const char *trk_name(uint8_t v)
+{
+    switch (v) {
+    case TRK_APPLE_OFB:   return "苹果";
+    case TRK_GOOGLE_FMDN: return "谷歌";
+    case TRK_SAMSUNG:     return "三星";
+    case TRK_TILE:        return "Tile";
+    case TRK_DULT:        return "DULT";
+    case TRK_HUAWEI:      return "华为";
+    case TRK_XIAOMI:      return "小米";
+    default:              return "其它";
+    }
+}
+
+/* 画一个 20x20 的 1bit 图标：每行把连续的点合并成一次 fill_rect */
+static void draw_icon(const uint32_t *rows, int x, int y, uint16_t color)
+{
+    if (rows == NULL) {
+        return;
+    }
+    for (int r = 0; r < VENDOR_ICON_SIZE; r++) {
+        uint32_t v = rows[r];
+        int c = 0;
+        while (c < VENDOR_ICON_SIZE) {
+            if (!((v >> (VENDOR_ICON_SIZE - 1 - c)) & 1)) {
+                c++;
+                continue;
+            }
+            int run = 1;
+            while (c + run < VENDOR_ICON_SIZE &&
+                   ((v >> (VENDOR_ICON_SIZE - 1 - (c + run))) & 1)) {
+                run++;
+            }
+            bsp_display_fill_rect(x + c, y + r, run, 1, color);
+            c += run;
+        }
+    }
+}
+
+/* 厂商格子：左图标（或字母标记）+ 右边数量 */
+static void draw_vendor_cell(int v, int n, int x, int y)
+{
+    const uint32_t *icon = vendor_icon_of(v);
+    char cnt[16];
+    snprintf(cnt, sizeof(cnt), "%d", n);
+
+    if (icon != NULL) {
+        draw_icon(icon, x, y, TH_FG);
+        bsp_display_text(x + VENDOR_ICON_SIZE + 3, y + 4, cnt, TH_OK, TH_BG, 1);
+    } else {
+        /* 三星 / Tile：官方 logo 是整词，压小就糊了，用字母标记 */
+        const char *mark = (v == TRK_SAMSUNG) ? "S" : "T";
+        bsp_display_text(x + 6, y + 4, mark, TH_FG, TH_BG, 2);
+        bsp_display_text(x + VENDOR_ICON_SIZE + 3, y + 4, cnt, TH_OK, TH_BG, 1);
+    }
+}
+
+static void render_tracker(void)
+{
+    char buf[64];
+    int y = 30;
+
+    /* 内容随扫描状态变，必须每帧清屏，否则旧文字会和新的叠在一起（踩过） */
+    bsp_display_fill_rect(0, 24, 240, 216, TH_BG);
+
+    if (tracker_scan_busy()) {
+        bsp_display_text(8, y, "扫描中", TH_ACCENT, TH_BG, 1);
+        bsp_display_text(8, y + 24, "被动监听，不连设备", TH_DIM, TH_BG, 1);
+        return;
+    }
+
+    if (tracker_scan_count() == 0) {
+        bsp_display_text(8, y, "还没有扫描记录", TH_DIM, TH_BG, 1);
+        bsp_display_text(8, y + 26, "按 BOOT 扫一次（8 秒）", TH_ACCENT, TH_BG, 1);
+        bsp_display_text(8, y + 50, "只识别厂商，不解归属", TH_DIM, TH_BG, 1);
+        return;
+    }
+
+    uint32_t age = tracker_scan_last_age_ms() / 1000;
+    snprintf(buf, sizeof(buf), "上次 %lu 秒前 共 %d 台",
+             (unsigned long) age, tracker_scan_count());
+    bsp_display_text(8, y, buf, TH_FG, TH_BG, 1);
+    y += 18;
+
+    snprintf(buf, sizeof(buf), "用时 %lu.%lu 秒  按 BOOT 重扫",
+             (unsigned long) (tracker_scan_last_cost_ms() / 1000),
+             (unsigned long) (tracker_scan_last_cost_ms() % 1000 / 100));
+    bsp_display_text(8, y, buf, TH_DIM, TH_BG, 1);
+    y += 26;
+
+    /* 厂商格子：两行，每行最多 4 个 */
+    static const uint8_t order[] = { TRK_APPLE_OFB, TRK_GOOGLE_FMDN, TRK_SAMSUNG,
+                                     TRK_TILE, TRK_DULT, TRK_HUAWEI, TRK_XIAOMI };
+    int shown = 0;
+    for (int i = 0; i < (int) (sizeof(order) / sizeof(order[0])); i++) {
+        int n = tracker_scan_vendor_count((trk_vendor_t) order[i]);
+        if (n <= 0) {
+            continue;
+        }
+        int slot = shown % 4;
+        int row = shown / 4;
+        draw_vendor_cell(order[i], n, 8 + slot * 56, y + row * 30);
+        shown++;
+    }
+    y += ((shown + 3) / 4) * 30 + 6;
+
+    if (y < 196) {
+        bsp_display_text(8, y, "最活跃", TH_DIM, TH_BG, 1);
+        y += 18;
+    }
+    trk_entry_t top[3];
+    int n = tracker_scan_top(top, 3);
+    for (int i = 0; i < n && y <= 212; i++) {
+        snprintf(buf, sizeof(buf), "%s %d dBm %d 包",
+                 trk_name(top[i].vendor), top[i].rssi_last, (int) top[i].seen);
+        bsp_display_text(12, y, buf, TH_FG, TH_BG, 1);
+        y += 17;
+    }
+}
 
 /* 本地估算的"击败全国百分之多少"。
    设备没有服务器，拿不到真实全国数据，所以这是按固定公式算出来的百分位，
@@ -2366,6 +2490,18 @@ static void ui_task(void *arg)
             draw_header("统计", s_state);
             render_stats();
             break;
+        case SC_TRACKER: {
+            /* 扫描结束/开始时强制重绘，否则会一直停在"扫描中" */
+            static bool last_busy = false;
+            bool now_busy = tracker_scan_busy();
+            if (now_busy != last_busy) {
+                last_busy = now_busy;
+                s_force_redraw = true;
+            }
+            draw_header("扫描", s_state);
+            render_tracker();
+            break;
+        }
         case SC_MODEL:
             draw_header("模型", s_state);
             render_model();
@@ -3109,6 +3245,17 @@ static void on_button(bsp_button_t btn, void *user)
     if (btn == BSP_BTN_UP && s_long_up) { s_long_up = false; return; }
     if (btn == BSP_BTN_DOWN && s_long_down) { s_long_down = false; return; }
 
+
+    /* 扫描页：短按 BOOT 手动扫一次 */
+    if (s_screen == SC_TRACKER && btn == BSP_BTN_BOOT) {
+        if (esl_ble_tracker_scan(8000) == ESP_OK) {
+            ESP_LOGI(TAG, "手动扫描：开始 8 秒");
+        } else {
+            ESP_LOGW(TAG, "手动扫描：正在扫或启动失败");
+        }
+        s_force_redraw = true;
+        return;
+    }
 
     /* 价签页：短按 BOOT 推送信息页 */
     if (s_screen == SC_ESL && btn == BSP_BTN_BOOT) {

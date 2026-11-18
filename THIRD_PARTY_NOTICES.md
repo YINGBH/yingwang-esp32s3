@@ -208,3 +208,14 @@ copies or substantial portions of the Software.
   的 11,273 句里统计出 3,780 个汉字。**仓库只提交去重后的汉字表**
   （`tools/hitokoto_chars.txt`），不包含任何句子原文，因此不涉及语料本身的授权；
   使用一言接口请遵守 [developer.hitokoto.cn](https://developer.hitokoto.cn/sentence/) 的说明。
+
+---
+
+## 厂商图标（扫描页）
+
+`components/tracker_scan/vendor_icons.h` 里的图标来自
+[Simple Icons](https://simpleicons.org)（CC0 1.0），由 `tools/gen_vendor_icons.py` 生成。
+
+Apple / Google / Huawei / Bluetooth 等标志的**商标权归各自公司所有**，
+这里仅用于在本地屏幕上标识"扫到的广播属于哪家生态"，不暗示任何官方关联或背书。
+Samsung / Tile 的官方图标是整词 logo，压到 20px 不可辨认，因此用字母标记代替。

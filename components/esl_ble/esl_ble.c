@@ -31,6 +31,7 @@
 #include "esp_rom_crc.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "tracker_scan.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "host/ble_hs.h"
@@ -71,6 +72,9 @@ static volatile char s_status[64] = "待机";
 
 static uint8_t s_own_addr_type;
 static uint16_t s_conn = BLE_HS_CONN_HANDLE_NONE;
+static int s_stack_holds = 0;   /* >0 = 别的功能占着蓝牙栈（扫描页） */
+static bool    s_trk_mode = false;      /* true = 正在做标签扫描（广播喂给 tracker_scan） */
+static int64_t s_trk_start_us = 0;
 static uint16_t s_img_chr = 0;
 static uint16_t s_ctl_chr = 0;
 static uint16_t s_bat_chr = 0;
@@ -141,8 +145,30 @@ static void set_status(esl_state_t st, const char *msg)
 
 /* ================================================================ 像素 */
 
+/* 画布缓冲按需分配：原来只在 esl_ble_prepare() 里分配，
+   但 on_sync → 自动扫描 → 读电量 → draw_info 这条路径会先跑到这里，
+   s_img 还是 NULL 就直接 memset 崩掉（踩过）。 */
+static esp_err_t ensure_img_buf(void)
+{
+    if (s_img != NULL) {
+        return ESP_OK;
+    }
+    s_img = heap_caps_malloc(PLANE * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (s_img == NULL) {
+        s_img = heap_caps_malloc(PLANE * 2, MALLOC_CAP_8BIT);
+    }
+    if (s_img == NULL) {
+        ESP_LOGE(TAG, "画布缓冲分配失败（%d 字节）", PLANE * 2);
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
+}
+
 static void buf_clear(void)
 {
+    if (ensure_img_buf() != ESP_OK) {
+        return;
+    }
     memset(s_img, 0xFF, PLANE);
     memset(s_img + PLANE, 0x00, PLANE);
 }
@@ -1186,6 +1212,10 @@ static void fail_cleanup(const char *msg)
     if (s_tmo) {
         esp_timer_stop(s_tmo);
     }
+    if (s_trk_mode) {
+        s_trk_mode = false;
+        tracker_scan_finish((uint32_t) ((esp_timer_get_time() - s_trk_start_us) / 1000));
+    }
     if (s_scanning) {
         ble_gap_disc_cancel();
         s_scanning = false;
@@ -1199,7 +1229,8 @@ static void fail_cleanup(const char *msg)
 
     /* 价签的 BLE 偶尔会漏答（MTU 交换或者第一次图片写 30 秒没回）。
        这种失败整轮重试通常能成功，别一次就把整次推送判死 */
-    if (msg && s_retry_left > 0 && s_state != ESL_DONE && ble_hs_synced()) {
+    if (msg && s_retry_left > 0 && s_stack_holds == 0 &&
+        s_state != ESL_DONE && ble_hs_synced()) {
         s_retry_left--;
         ESP_LOGW(TAG, "%s，3 秒后整轮重试（还剩 %d 次）", msg, s_retry_left);
         set_status(ESL_CONNECTING, "重试中");
@@ -1577,8 +1608,58 @@ static void ensure_scan_tmo(void)
     }
 }
 
+/* 被动扫追踪标签：用同一个协议栈，广播直接喂给 tracker_scan。
+   不连接、不写特征，扫完自动结束。 */
+esp_err_t esl_ble_tracker_scan(uint32_t ms)
+{
+    if (s_state == ESL_CONNECTING || s_state == ESL_PUSHING) {
+        return ESP_ERR_INVALID_STATE;      /* 正在推图，别插队 */
+    }
+    if (s_trk_mode) {
+        return ESP_ERR_INVALID_STATE;      /* 已经有一轮在跑 */
+    }
+    if (esl_ble_stack_ensure() != ESP_OK) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    struct ble_gap_disc_params p;
+    memset(&p, 0, sizeof(p));
+    p.filter_duplicates = 0;      /* 每个包都要 */
+    p.passive = 1;                /* 不发 SCAN_REQ */
+    p.itvl = 160;                 /* 100ms */
+    p.window = 80;                /* 50ms，约 50% 占空比 */
+
+    if (s_scanning) {
+        ble_gap_disc_cancel();
+        s_scanning = false;
+    }
+    tracker_scan_begin();
+    s_trk_mode = true;
+    s_trk_start_us = esp_timer_get_time();
+    if (ble_gap_disc(s_own_addr_type, (int32_t) ms, &p, gap_event, NULL) != 0) {
+        s_trk_mode = false;
+        tracker_scan_finish(0);
+        ESP_LOGW(TAG, "标签扫描启动失败");
+        return ESP_FAIL;
+    }
+    s_scanning = true;
+    set_status(ESL_SCANNING, "扫描标签中");
+    ESP_LOGI(TAG, "标签扫描开始 %u ms", (unsigned) ms);
+    return ESP_OK;
+}
+
 static void start_scan(void)
 {
+    if (s_trk_mode) {
+        /* 标签扫描正在用 discovery，别 cancel 掉它（否则那边等不到 DISC_COMPLETE） */
+        ESP_LOGI(TAG, "标签扫描进行中，本次找价签跳过");
+        return;
+    }
+    if (s_stack_holds > 0) {
+        /* 扫描页/别的功能占着射频，这次自动扫描让路 */
+        ESP_LOGI(TAG, "蓝牙被占用，跳过本次自动扫描");
+        return;
+    }
     ensure_scan_tmo();
     struct ble_gap_disc_params p;
     memset(&p, 0, sizeof(p));
@@ -1608,6 +1689,11 @@ static int gap_event(struct ble_gap_event *ev, void *arg)
     case BLE_GAP_EVENT_DISC: {
         const struct ble_gap_disc_desc *d = &ev->disc;
         if (d->length_data == 0) {
+            return 0;
+        }
+        if (s_trk_mode) {
+            /* 标签扫描：只分类记账，不连设备 */
+            tracker_scan_feed(d->addr.val, d->rssi, d->data, d->length_data);
             return 0;
         }
         struct ble_hs_adv_fields f;
@@ -1661,6 +1747,14 @@ static int gap_event(struct ble_gap_event *ev, void *arg)
         return 0;
     }
     case BLE_GAP_EVENT_DISC_COMPLETE:
+        if (s_trk_mode) {
+            s_trk_mode = false;
+            s_scanning = false;
+            uint32_t cost = (uint32_t) ((esp_timer_get_time() - s_trk_start_us) / 1000);
+            tracker_scan_finish(cost);
+            set_status(ESL_IDLE, "待机");
+            return 0;
+        }
         /* 8 秒扫描到期还没搜到：立刻重来，别干等 40 秒总超时。
            价签的广播间隔可能比较长，连续重扫才能尽快撞上它。 */
         s_scanning = false;
@@ -1881,6 +1975,65 @@ static esp_err_t start(bool info)
     return err;
 }
 
+/* 确保 NimBLE 协议栈可用（扫描页要复用同一个栈）。
+   本来协议栈是推价签时才懒加载的，所以这里补一个显式的"确保起来"。 */
+esp_err_t esl_ble_stack_ensure(void)
+{
+    /* 协议栈一起来就会自动扫描/读电量/画图，缓冲必须先就位 */
+    if (ensure_img_buf() != ESP_OK) {
+        return ESP_ERR_NO_MEM;
+    }
+    if (ble_hs_synced()) {
+        return ESP_OK;
+    }
+    esp_err_t err = nimble_port_init();
+    if (err == ESP_OK) {
+        if (!s_stack_owned) {
+            s_stack_owned = true;
+            ble_hs_cfg.sync_cb = on_sync;
+            ble_hs_cfg.reset_cb = on_reset;
+            nimble_port_freertos_init(host_task);
+        }
+    } else if (err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "蓝牙初始化失败：%s", esp_err_to_name(err));
+        return err;
+    }
+    /* 等 host 同步完成（最多 3 秒） */
+    for (int i = 0; i < 30 && !ble_hs_synced(); i++) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    if (!ble_hs_synced()) {
+        ESP_LOGW(TAG, "蓝牙协议栈 3 秒内未就绪");
+        return ESP_ERR_INVALID_STATE;
+    }
+    ESP_LOGI(TAG, "蓝牙协议栈就绪（供扫描复用）");
+    return ESP_OK;
+}
+
+/* 中止当前流程：手动扫描要抢占射频时调用。
+   价签有重试与定时机制，晚点会自己再来一次，不会丢。 */
+void esl_ble_abort(void)
+{
+    if (s_scanning) {
+        ble_gap_disc_cancel();
+        s_scanning = false;
+    }
+    if (s_conn != BLE_HS_CONN_HANDLE_NONE) {
+        ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);
+        s_conn = BLE_HS_CONN_HANDLE_NONE;
+    }
+    s_retry_left = 0;
+    set_status(ESL_IDLE, "待机");
+    ESP_LOGW(TAG, "手动扫描抢占：已中止价签流程");
+}
+
+/* 价签链路正忙（找标签 / 连接 / 推图）时，别的扫描要让路 */
+bool esl_ble_link_busy(void)
+{
+    esl_state_t st = s_state;
+    return st == ESL_SCANNING || st == ESL_CONNECTING || st == ESL_PUSHING;
+}
+
 /* 主循环发现"已认证"时调用，记下最近一次认证时刻
    （墨水屏取最近 10 分钟内的记录，不用实时值） */
 void esl_ble_note_authed(void)
@@ -1981,9 +2134,23 @@ int esl_ble_progress(void)
 bool esl_ble_stack_up(void) { return s_stack_owned; }
 
 /* 价签结束、空闲 15 秒后由 main 调用，把 ~60KB 内部 RAM 还给系统 */
+/* 别的组件（如标签扫描）占着协议栈时，别让 main 把它拆了 */
+void esl_ble_stack_hold(bool on)
+{
+    if (on) {
+        s_stack_holds++;
+    } else if (s_stack_holds > 0) {
+        s_stack_holds--;
+    }
+}
+
 void esl_ble_release(void)
 {
     if (!s_stack_owned) {
+        return;
+    }
+    if (s_stack_holds > 0) {
+        ESP_LOGI(TAG, "有其它功能占用蓝牙栈（%d），暂不释放", s_stack_holds);
         return;
     }
     size_t before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
