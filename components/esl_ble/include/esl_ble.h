@@ -25,6 +25,7 @@ typedef enum {
 esp_err_t esl_ble_push_info(void);
 
 /** 调试：当前墨水屏画面缓冲（PLANE*2 字节，黑/红两个平面） */
+void esl_ble_cache_debug(bool reset, int *built_ms, bool *authed);
 const uint8_t *esl_ble_image(size_t *len);
 
 /** main 更新：网络是否就绪（已认证才允许推价签） */

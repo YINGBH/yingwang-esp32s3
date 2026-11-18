@@ -834,6 +834,15 @@ static void cli_task(void *arg)
                 reply_err("busy");
             }
             fflush(stdout);
+        } else if (strncmp(line, "EPDCACHE", 8) == 0) {
+            /* EPDCACHE 查看缓存；EPDCACHE RESET 作废缓存 */
+            bool reset = (strstr(line, "RESET") != NULL);
+            int built = 0;
+            bool authed = false;
+            esl_ble_cache_debug(reset, &built, &authed);
+            printf("@{\"ok\":true,\"built_ms\":%d,\"authed\":%s}\n",
+                   built, authed ? "true" : "false");
+            fflush(stdout);
         } else if (strncmp(line, "SCANTEST ", 9) == 0) {
             /* SCANTEST <hex>：只分类，不记账。验证手机/电脑判定用 */
             const char *hexp = line + 9;

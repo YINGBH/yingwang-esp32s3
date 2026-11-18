@@ -110,6 +110,7 @@ static bool s_partial = false;
 static int  s_pmin = 0;
 static int  s_pend = 0;
 static int64_t s_img_built_ms = 0;
+static bool    s_img_authed = false;   /* 缓存画面里的认证状态 */
 static bool    s_img_built_info = true;
 #define IMG_FRESH_MS   (10LL * 60 * 1000)   /* 画面 10 分钟内都算新鲜 */
 
@@ -880,6 +881,7 @@ static void draw_info(void)
     /* 最近 10 分钟内认证过就算"已认证"，避免刚掉线时显示成"认证中" */
     bool authed = (st == APP_ST_ONLINE) ||
                   (s_last_authed_ms > 0 && (now_ms - s_last_authed_ms) <= AUTHED_WINDOW_MS);
+    s_img_authed = authed;      /* 记住这张图画的是哪种状态 */
 
     char buf[96];
 
@@ -1165,6 +1167,7 @@ static void draw_info(void)
 /* 几何测试卡（排查方向/颜色） */
 static void draw_test_card(void)
 {
+    s_img_authed = false;
     buf_clear();
     fill_rect(0, 0, ESL_W - 1, ESL_H - 1, INK_BLACK);
     fill_rect(1, 1, ESL_W - 2, ESL_H - 2, INK_WHITE);
@@ -1443,7 +1446,9 @@ static int on_bat_read(uint16_t conn, const struct ble_gatt_error *e,
             s_img_built_ms = now2;
             s_img_built_info = s_want_info;
         } else {
-            ESP_LOGI(TAG, "用预渲染画面（%.0f 秒前生成）", (now2 - s_img_built_ms) / 1000.0);
+            ESP_LOGI(TAG, "用预渲染画面（%.0f 秒前生成，画的是%s）",
+                     (now2 - s_img_built_ms) / 1000.0,
+                     s_img_authed ? "已认证" : "认证中");
             /* 画面里的电量可能是上一轮的：这次读到了新值就只重画那一小块 */
             if (s_want_info && s_img_bat != (int) s_epd_bat) {
                 /* 局部发送已禁用，实际是整屏推送，日志要写实 */
@@ -2070,6 +2075,14 @@ bool esl_ble_link_busy(void)
 void esl_ble_note_authed(void)
 {
     s_last_authed_ms = esp_timer_get_time() / 1000;
+    /* 缓存里画的还是未认证状态，但现在已经认证了 -> 作废，
+       下次推送必须重画。只在还没画成已认证时作废一次，
+       不会把预渲染缓存整体废掉。 */
+    if (!s_img_authed) {
+        s_img_built_ms = 0;
+        s_last_img_valid = false;
+        ESP_LOGI(TAG, "认证状态变了：作废缓存画面（下次推送会重画）");
+    }
 }
 
 /* 推送前预渲染画面：info=信息页，false=测试卡 */
@@ -2103,6 +2116,27 @@ esp_err_t esl_ble_prepare(bool info)
 /* 推价签前先确认网络在线：BLE 会抢 2.4G 射频，
    认证/重连的关键时刻推图很容易把 WiFi 顶掉 */
 /* 调试用：把当前墨水屏画面缓冲交出去（PLANE*2 字节，黑白两个平面） */
+/* 调试：查询/作废缓存画面（验证认证状态变化后的重画行为） */
+void esl_ble_cache_debug(bool reset, int *built_ms, bool *authed)
+{
+    if (built_ms) {
+        *built_ms = (int) s_img_built_ms;
+    }
+    if (authed) {
+        *authed = s_img_authed;
+    }
+    if (reset) {
+        s_img_built_ms = 0;
+        s_last_img_valid = false;
+        ESP_LOGW(TAG, "调试：手动作废缓存画面");
+    } else if (s_img_built_ms == 0) {
+        /* 没有缓存时伪造一张"认证中"的画面，方便验证认证成功后的作废逻辑 */
+        s_img_built_ms = esp_timer_get_time() / 1000;
+        s_img_authed = false;
+        ESP_LOGW(TAG, "调试：伪造一张未认证的缓存画面");
+    }
+}
+
 const uint8_t *esl_ble_image(size_t *len)
 {
     if (len) {
