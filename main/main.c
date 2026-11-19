@@ -102,7 +102,6 @@ static bool              s_esl_push_test_card = false;
 
 /* 时钟页增量刷新 + 长按状态（本次误删后补回） */
 static bool              s_clock_full = false;
-static int               s_clock_minute = -1;
 static int               s_clock_second = -1;
 static bool              s_clock_invalid_drawn = false;   /* "对时中"只画一次 */
 static char              s_clock_date_last[64] = { 0 };   /* 上次画的日期行 */
@@ -1788,18 +1787,35 @@ static void render_clock(void)
         bsp_display_fill_rect(0, 0, 240, 4, sc);
     }
 
-    if (tw.weather_valid) {
-        draw_weather_icon(6, 18, tw.code);
-        snprintf(buf, sizeof(buf), "%s %dC", tw.desc, tw.temp_c);
-        if (has_bg) {
-            bsp_display_text(6 + 26 + 1, 22 + 1, buf, COLOR_BLACK, -1, 1);
+    {
+        bool charging = bsp_power_is_charging();
+        if (tw.weather_valid) {
+            draw_weather_icon(6, 18, tw.code);
+            if (charging) {
+                snprintf(buf, sizeof(buf), "%s %dC 充电", tw.desc, tw.temp_c);
+            } else {
+                snprintf(buf, sizeof(buf), "%s %dC", tw.desc, tw.temp_c);
+            }
+            if (has_bg) {
+                bsp_display_text(6 + 26 + 1, 22 + 1, buf, COLOR_BLACK, -1, 1);
+            }
+            bsp_display_text(6 + 26, 22, buf, TH_FG, has_bg ? -1 : COLOR_BLACK, 1);
+        } else if (charging) {
+            /* 没天气数据时也要让人知道在充电（放左上，避开右上角的装饰角标） */
+            if (has_bg) {
+                bsp_display_text(7, 23, "充电", COLOR_BLACK, -1, 1);
+            }
+            bsp_display_text(6, 22, "充电", TH_OK, has_bg ? -1 : COLOR_BLACK, 1);
         }
-        bsp_display_text(6 + 26, 22, buf, TH_FG, has_bg ? -1 : COLOR_BLACK, 1);
     }
 
     if (!has_bg) {
         bsp_display_text_center(164, "网页上传图片可换背景", TH_DIM, bg_color, 1);
+        /* 页脚操作提示：时钟页没有标题栏，第一次用的人不知道该按哪个键翻页 */
+        bsp_display_text_center(228, "UP/DN 切页 · 长按 BOOT 回状态", TH_DIM, bg_color, 1);
     }
+
+
 
 }
 
@@ -2936,6 +2952,7 @@ static void poll_longpress(void)
 {
     static int64_t t0[3];
     static bool fired[3];
+    static int64_t last_rep[3];      /* 长按连续翻页的上次时间 */
     const bsp_button_t btns[3] = {BSP_BTN_BOOT, BSP_BTN_UP, BSP_BTN_DOWN};
     int64_t now = esp_timer_get_time() / 1000;
 
@@ -2981,6 +2998,7 @@ static void poll_longpress(void)
                     }
                     s_long_boot = true;
                 } else if (i == 1 || i == 2) {
+                    last_rep[i] = now;
                     if (i == 1) {
                         s_screen = (s_screen + SC_CYCLABLE - 1) % SC_CYCLABLE;
                         s_long_up = true;
@@ -2988,11 +3006,22 @@ static void poll_longpress(void)
                         s_screen = (s_screen + 1) % SC_CYCLABLE;
                         s_long_down = true;
                     }
+                    s_force_redraw = true;
                 }
+            } else if (fired[i] && (i == 1 || i == 2) && now - last_rep[i] >= 300) {
+                /* 按住不放：继续翻页（每 300ms 一页），比反复点按键舒服 */
+                last_rep[i] = now;
+                if (i == 1) {
+                    s_screen = (s_screen + SC_CYCLABLE - 1) % SC_CYCLABLE;
+                } else {
+                    s_screen = (s_screen + 1) % SC_CYCLABLE;
+                }
+                s_force_redraw = true;
             }
         } else {
             t0[i] = 0;
             fired[i] = false;
+            last_rep[i] = 0;
         }
     }
 }
