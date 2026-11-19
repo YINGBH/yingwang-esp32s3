@@ -267,11 +267,15 @@ void bsp_display_set_rotation(int deg)
     case 180:
         esp_lcd_panel_swap_xy(s_panel, false);
         esp_lcd_panel_mirror(s_panel, true, true);
+        /* 没 swap：长轴是 Y（320），上下翻转后可见区跑到 320 轴末端，
+           必须补 320-240=80，否则画面被裁/偏出（180/270 原来就是错的） */
+        gap_y = 80;
         break;
     case 270:
         esp_lcd_panel_swap_xy(s_panel, true);
         esp_lcd_panel_mirror(s_panel, true, false);
-        gap_y = 80;
+        /* swap 后长轴是 X（320），偏移要给 X */
+        gap_x = 80;
         break;
     case 0:
     default:
