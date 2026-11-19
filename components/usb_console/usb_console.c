@@ -281,6 +281,8 @@ static void do_set(char *kv)
 {
     char *eq = strchr(kv, '=');
     if (eq == NULL) {
+        /* 没有等号：多半是网页把值发丢了，把原文记下来便于排查 */
+        ESP_LOGW(TAG, "SET 失败：缺少 '='（原文 \"%s\"）", kv);
         reply_err("bad");
         return;
     }
@@ -553,6 +555,7 @@ static void do_set(char *kv)
     }
 
     if (!known) {
+        ESP_LOGW(TAG, "SET 失败：未知键（原文 \"%s=%s\"）", key, val);
         reply_err("unknown_key");
         return;
     }

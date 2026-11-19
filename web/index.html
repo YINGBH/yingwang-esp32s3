@@ -2,6 +2,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <title>YingWang 板子 · USB 串口配置</title>
 <style>
   :root { color-scheme: light dark; }
@@ -33,7 +35,7 @@
 </head>
 <body>
 <h1>YingWang 板子 · USB 串口配置</h1>
-<div class="sub">用 USB 线连板子，Chrome/Edge 里点“连接串口”，选那个 USB 串行设备（COMx）。不需要 WiFi，也不占板子内存。</div>
+<div class="sub">用 USB 线连板子，Chrome/Edge 里点“连接串口”，选那个 USB 串行设备（COMx）。不需要 WiFi，也不占板子内存。 <span id="pageVer" style="opacity:.6"></span></div>
 
 <div class="row">
   <button id="btnConnect">连接串口</button>
@@ -257,6 +259,8 @@ let port = null, reader = null, writer = null, connected = false, pollTimer = nu
 let lastPort = null, manualDisconnect = false, reconnectTimer = null, reconnectTries = 0;
 let uploading = false, ackWaiters = [];
 let shotMode = false, shotState = 0, shotNeed = 0, shotChunks = [], shotTimer = null, shotXor = -1;
+const PAGE_VER = '2026-11-19.2120';   /* 页面版本：排查缓存用 */
+try { const e = document.getElementById('pageVer'); if (e) e.textContent = '（页面 ' + PAGE_VER + '）'; } catch (e) {}
 let connId = 0;      /* 连接代次：自动重连时，旧 readLoop 的收尾不能动新连接的全局变量 */
 
 const $ = (id) => document.getElementById(id);
@@ -295,8 +299,11 @@ function setConnected(on) {
 
 async function send(cmd) {
   if (!connected || !writer) return;
-  try { await writer.write(new TextEncoder().encode(cmd + "\n")); }
-  catch (e) { log('写串口失败：' + e.message); }
+  try {
+    await writer.write(new TextEncoder().encode(cmd + "\n"));
+    /* GET 每 3 秒一次，别刷屏；其它命令回显原文，出问题时能对着看 */
+    if (!cmd.startsWith('GET')) log('→ ' + cmd);
+  } catch (e) { log('写串口失败：' + e.message); }
 }
 
 /* 等一条命令的应答。
@@ -869,17 +876,26 @@ $('btnSave').onclick = async () => {
   // 界面上完全看不出来，用户会以为"保存成功"
   const bad = [];
   $('btnSave').disabled = true;
-  log('开始下发配置（逐条确认）…');
+  log('开始下发配置（逐条确认，失败会自动重试一次）…');
   for (const [k, v] of kv) {
     if (v === '' || v === null) continue;
-    try {
-      await send(`SET ${k}=${v}`);
-      const ack = await waitAck(6000);
-      if (!ack || !ack.ok) bad.push(`${k}=${(ack && ack.err) || '失败'}`);
-    } catch (e) {
-      bad.push(`${k}=超时`);
+    /* 单条命令失败（多半是串口丢字节把行尾截断了）自动重试一次 */
+    let err = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await send(`SET ${k}=${v}`);
+        const ack = await waitAck(6000);
+        if (ack && ack.ok) { err = null; break; }
+        err = (ack && ack.err) || '无应答';
+      } catch (e) {
+        err = '超时';
+      }
+      if (attempt === 0) await new Promise(r => setTimeout(r, 300));
     }
-    await new Promise(r => setTimeout(r, 120));
+    if (err) {
+      bad.push(`${k}（发的 "${String(v).slice(0, 20)}"，板子说 ${err}）`);
+    }
+    await new Promise(r => setTimeout(r, 250));
   }
   $('pass').value = ''; $('pwd').value = '';
   if ($('alarm_vol').value !== '') await send('VOL ' + $('alarm_vol').value);
