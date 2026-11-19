@@ -294,7 +294,10 @@ function setConnected(on) {
   }
   setAlarmUiEnabled(on);
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-  if (on) pollTimer = setInterval(() => { if (!uploading && !shotMode) send('GET'); }, 3000);
+  if (on) pollTimer = setInterval(() => {
+    /* 拉日志/抓帧/上传期间别插 GET：回复会被当成日志内容，还会和板子的日志流抢带宽 */
+    if (!uploading && !shotMode && !logMode) send('GET');
+  }, 3000);
 }
 
 async function send(cmd) {
@@ -715,6 +718,8 @@ let logMode = null;      /* { buf, resolve, tag } */
 
 function feedLog(chunk) {
   if (!logMode) return;
+  /* 板子的 @{"ok"...} 是命令应答，不是日志内容，别显示在日志窗口里 */
+  if (chunk && chunk.startsWith('@{"')) return;
   /* 解码器要跨 chunk 复用：每次 new 一个的话，一个汉字被拆在两个 USB 包里就会变成乱码 */
   if (!logMode.dec) logMode.dec = new TextDecoder();
   logMode.buf += logMode.dec.decode(chunk, { stream: true });
