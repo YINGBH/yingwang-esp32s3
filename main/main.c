@@ -104,6 +104,8 @@ static bool              s_esl_push_test_card = false;
 static bool              s_clock_full = false;
 static int               s_clock_minute = -1;
 static int               s_clock_second = -1;
+static bool              s_clock_invalid_drawn = false;   /* "对时中"只画一次 */
+static char              s_clock_date_last[64] = { 0 };   /* 上次画的日期行 */
 
 static volatile bool     s_ui_freeze = false;   /* 截图用：暂停界面刷新 */
 /* 开机阶段：动画 + 连接 WiFi + 首次认证还没走完时，UI 任务不许画界面，
@@ -1695,17 +1697,27 @@ static void render_clock(void)
             bsp_display_fill_rect(0, 0, 240, 240, TH_BG);
         }
         s_clock_full = false;
-        s_clock_minute = -1;
         s_clock_second = -999;      /* 进页面强制整页画一次 */
+        s_clock_invalid_drawn = false;
+        s_clock_date_last[0] = '\0';
     }
 
     int second_of_day = tw.time_valid ? (tw.hour * 3600 + tw.minute * 60 + tw.second) : -2;
     uint16_t bg_color = has_bg ? COLOR_BLACK : TH_BG;
 
-    if (tw.time_valid && second_of_day == s_clock_second) {
-        return;                                     /* 时间没变，什么都不用重画 */
+    if (!tw.time_valid) {
+        /* 还没对上时间：只画一次"对时中"，别每 150ms 整屏重画（有背景图时会拖慢刷屏） */
+        if (s_clock_invalid_drawn) {
+            return;
+        }
+        s_clock_invalid_drawn = true;
+    } else {
+        s_clock_invalid_drawn = false;
+        if (second_of_day == s_clock_second) {
+            return;                                 /* 时间没变，什么都不用重画 */
+        }
+        s_clock_second = second_of_day;
     }
-    s_clock_second = second_of_day;
 
     /* 有背景图：不垫黑条，每分钟整张底图重画一次，文字直接压在图上（透明底） */
     int bar_y = has_bg ? 148 : 74;
@@ -1739,18 +1751,32 @@ static void render_clock(void)
         int bbm = (bcfg.birthday / 100) % 100;
         int bbd = bcfg.birthday % 100;
         bool today_bday = (bbm == tw.month && bbd == tw.day && bbd > 0);
+        char datebuf[64];
         if (today_bday) {
-            snprintf(buf, sizeof(buf), "%d月%d日 %s 生日快乐", tw.month, tw.day, day);
+            snprintf(datebuf, sizeof(datebuf), "%d月%d日 %s 生日快乐", tw.month, tw.day, day);
         } else if (cd.name != NULL) {
-            snprintf(buf, sizeof(buf), "%d月%d日 %s %s", tw.month, tw.day, day, cd.name);
+            snprintf(datebuf, sizeof(datebuf), "%d月%d日 %s %s", tw.month, tw.day, day, cd.name);
         } else {
-            snprintf(buf, sizeof(buf), "%d月%d日 %s", tw.month, tw.day, day);
+            snprintf(datebuf, sizeof(datebuf), "%d月%d日 %s", tw.month, tw.day, day);
+        }
+        /* 有背景图时文字是透明底：日期串长度一变，旧字会留残影。
+           变了就把底图重画一遍（一天最多一次）。 */
+        if (has_bg && strcmp(datebuf, s_clock_date_last) != 0) {
+            bg_draw();
+            bg_drawn = true;
+            snprintf(s_clock_date_last, sizeof(s_clock_date_last), "%s", datebuf);
+            /* 底图重画会把时间也盖掉，这里补画一遍 */
+            int tw3 = text_w(buf, 3);
+            int tx3 = (240 - tw3) / 2;
+            int ty3 = bar_y + 4;
+            bsp_display_text(tx3 + 2, ty3 + 2, buf, COLOR_BLACK, -1, 3);
+            bsp_display_text(tx3, ty3, buf, TH_FG, -1, 3);
         }
         if (has_bg) {
-            int dw = text_w(buf, 1);
-            bsp_display_text((240 - dw) / 2 + 1, bar_y + 57, buf, COLOR_BLACK, -1, 1);
+            int dw = text_w(datebuf, 1);
+            bsp_display_text((240 - dw) / 2 + 1, bar_y + 57, datebuf, COLOR_BLACK, -1, 1);
         }
-        bsp_display_text_center(bar_y + (has_bg ? 56 : 62), buf, TH_DIM, text_bg, 1);
+        bsp_display_text_center(bar_y + (has_bg ? 56 : 62), datebuf, TH_DIM, text_bg, 1);
     } else {
         bsp_display_text_center(bar_y + 20, "对时中", TH_ACCENT, text_bg, 2);
     }
