@@ -174,6 +174,7 @@ static void send_status(void)
     cJSON_AddStringToObject(root, "ssid", conn ? wifi_sta_ssid() : "");
     cJSON_AddStringToObject(root, "ip", conn ? wifi_sta_ip() : "");
     cJSON_AddNumberToObject(root, "rssi", conn ? wifi_sta_rssi() : 0);
+    cJSON_AddNumberToObject(root, "rot", cfg.rot);
     cJSON_AddStringToObject(root, "reset", reset_reason_str());
     cJSON_AddNumberToObject(root, "heap", (double) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     cJSON_AddNumberToObject(root, "psram", (double) heap_caps_get_free_size(MALLOC_CAP_SPIRAM));

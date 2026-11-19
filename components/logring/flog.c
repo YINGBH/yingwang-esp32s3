@@ -8,6 +8,7 @@
 #include "esp_partition.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_timer.h"
 #include "freertos/semphr.h"
 
 static const char *TAG = "flog";
@@ -130,14 +131,26 @@ static void flog_task(void *arg)
     /* 开机先等 30 秒：启动期日志量最大，这时候写 flash 最容易和
        WiFi 初始化抢资源（之前就卡死过一次） */
     vTaskDelay(pdMS_TO_TICKS(30000));
+    int64_t last_flush = esp_timer_get_time() / 1000;
     while (true) {
-        vTaskDelay(pdMS_TO_TICKS(20000));      /* 每 20 秒落一次盘 */
-        bool need;
+        /* 每 10 秒看一眼：攒够 2KB 或满 60 秒才落盘。
+           原来固定 20 秒一次，一天 4300 多次写（含擦页），对闪存寿命不划算；
+           日志少的时候没必要那么勤。 */
+        vTaskDelay(pdMS_TO_TICKS(10000));
+        bool need = false;
         xSemaphoreTake(s_lock, portMAX_DELAY);
-        need = (s_stage_len > 0);
+        need = (s_stage_len >= 2048);
         xSemaphoreGive(s_lock);
-        if (need) {
-            flush_stage();
+        int64_t now = esp_timer_get_time() / 1000;
+        if (need || (now - last_flush >= 60000)) {
+            bool has;
+            xSemaphoreTake(s_lock, portMAX_DELAY);
+            has = (s_stage_len > 0);
+            xSemaphoreGive(s_lock);
+            if (has) {
+                flush_stage();
+            }
+            last_flush = now;
         }
     }
 }

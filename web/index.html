@@ -256,7 +256,7 @@ let port = null, reader = null, writer = null, connected = false, pollTimer = nu
   setAlarmUiEnabled(false);
 let lastPort = null, manualDisconnect = false, reconnectTimer = null, reconnectTries = 0;
 let uploading = false, ackWaiters = [];
-let shotMode = false, shotState = 0, shotNeed = 0, shotChunks = [], shotTimer = null;
+let shotMode = false, shotState = 0, shotNeed = 0, shotChunks = [], shotTimer = null, shotXor = -1;
 let connId = 0;      /* 连接代次：自动重连时，旧 readLoop 的收尾不能动新连接的全局变量 */
 
 const $ = (id) => document.getElementById(id);
@@ -369,7 +369,9 @@ function feedShot(chunk) {
     if (idx < 0) { shotChunks = [all]; return; }
     const nl = s.indexOf('\n', idx);
     if (nl < 0) return;
-    shotNeed = parseInt(s.slice(idx + 5, nl).trim(), 10) || 0;
+    const hdrParts = s.slice(idx + 5, nl).trim().split(/\s+/);
+    shotNeed = parseInt(hdrParts[0], 10) || 0;
+    shotXor = (hdrParts.length > 1) ? parseInt(hdrParts[1], 16) : -1;
     shotState = 1;
     shotChunks = [all.slice(new TextEncoder().encode(s.slice(0, nl + 1)).length)];
     return;
@@ -377,7 +379,18 @@ function feedShot(chunk) {
   shotChunks.push(chunk);
   const all = concat(shotChunks);
   if (all.length >= shotNeed && shotNeed > 0) {
-    drawFrame(all.subarray(0, shotNeed));
+    const frame = all.subarray(0, shotNeed);
+    if (shotXor >= 0) {
+      let x = 0;
+      for (let i = 0; i < frame.length; i++) x ^= frame[i];
+      if (x !== shotXor) {
+        log('抓帧校验失败，重抓一次');
+        shotState = 0; shotChunks = []; shotXor = -1;
+        send('SHOT');
+        return;
+      }
+    }
+    drawFrame(frame);
     log('屏幕已刷新');
     shotMode = false; shotState = 0; shotChunks = [];
     if (shotTimer) { clearTimeout(shotTimer); shotTimer = null; }
@@ -881,7 +894,8 @@ $('btnSave').onclick = async () => {
      所以再 GET 一次逐项比对，把不一致的列出来。 */
   try {
     await send('GET');
-    const st = await waitAck(8000);
+    /* waitAck 默认会把带 cfg 的回复当成状态轮询排除，这里必须显式匹配 */
+    const st = await waitAck(8000, o => !!o.cfg);
     if (st && st.cfg) {
       const c = st.cfg;
       const mismatch = [];
