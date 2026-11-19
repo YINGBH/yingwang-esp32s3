@@ -519,14 +519,38 @@ async function connect(reuse) {
     send('GET');
     readLoop(myId);
   } catch (e) {
-    log('连接失败：' + e.message);
+    const msg = String((e && e.message) || e);
+    log('连接失败：' + msg);
     if (reuse) {
       scheduleReconnect();
+    } else if (/access|denied|busy|占用|拒绝/i.test(msg)) {
+      alert('串口被占用了。按顺序试：\n'
+            + '1) 关掉其它打开本页的标签页（Web Serial 同一时刻只允许一个页面占用）\n'
+            + '2) 关掉正在用这个串口的工具（串口助手 / 另一个网页 / 烧录程序）\n'
+            + '3) 拔插一次 USB，再点「连接串口」\n\n原始错误：' + msg);
+    } else if (/not found|找不到|no port/i.test(msg)) {
+      alert('没找到串口设备：检查 USB 线是否支持数据、板子是否上电。\n\n原始错误：' + msg);
     } else {
-      alert('连接失败：' + e.message + '\n\n如果提示占用，先在别的程序里关掉这个串口。');
+      alert('连接失败：' + msg);
     }
   }
 }
+
+/* 关页面/刷新/切走时主动释放串口。
+   Web Serial 的端口同一时刻只能被一个页面占用，旧标签页不释放，
+   新页面就会一直报「拒绝访问」，看起来像"网页完全不能用"（踩过）。 */
+function releasePortOnExit() {
+  try {
+    manualDisconnect = true;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if (reader) { try { reader.cancel(); } catch (e) {} }
+    if (writer) { try { writer.releaseLock(); } catch (e) {} }
+    if (port) { try { port.close(); } catch (e) {} }
+    connected = false;
+  } catch (e) {}
+}
+window.addEventListener('pagehide', releasePortOnExit);
+window.addEventListener('beforeunload', releasePortOnExit);
 
 /* 板子复位/USB 重新枚举后，端口会失效：过 2.5 秒自动重连，最多 10 次 */
 function scheduleReconnect() {
@@ -581,6 +605,10 @@ async function disconnect(doClose = true) {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     reconnectTries = 0;
   }
+  try { if (reader) { reader.releaseLock(); } } catch (e) {}
+  try { if (writer) { writer.releaseLock(); } } catch (e) {}
+  reader = null;
+  writer = null;
   setConnected(false);
   if (doClose) {
     try { if (reader) await reader.cancel(); } catch (e) {}

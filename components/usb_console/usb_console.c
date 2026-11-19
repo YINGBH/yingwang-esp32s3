@@ -120,6 +120,16 @@ static void shot_guard_cb(void *arg)
     ESP_LOGW(TAG, "截图超时，界面解冻");
 }
 
+/* BOOTHINT 的冻结兜底：60 秒后自动解冻，避免调试脚本忘了发 BOOTHINT 0 */
+static esp_timer_handle_t s_hint_guard = NULL;
+
+static void hint_guard_cb(void *arg)
+{
+    (void) arg;
+    ui_unfreeze();
+    ESP_LOGW(TAG, "BOOTHINT 冻结超过 60 秒，自动解冻");
+}
+
 static int b64_val(char c)
 {
     if (c >= 'A' && c <= 'Z') return c - 'A';
@@ -826,10 +836,21 @@ static void cli_task(void *arg)
         } else if (strncmp(line, "BOOTHINT", 8) == 0) {
             /* BOOTHINT 1=连接中 2=认证中 3=已认证 4=未完成；不带参数=1 */
             int n = (line[8] == ' ') ? atoi(line + 9) : 1;
+            if (s_hint_guard == NULL) {
+                const esp_timer_create_args_t a = { .callback = hint_guard_cb, .name = "hint" };
+                esp_timer_create(&a, &s_hint_guard);
+            }
             if (n == 0) {
+                if (s_hint_guard) {
+                    esp_timer_stop(s_hint_guard);
+                }
                 ui_unfreeze();
                 reply_ok();
             } else {
+            if (s_hint_guard) {
+                esp_timer_stop(s_hint_guard);
+                esp_timer_start_once(s_hint_guard, 60LL * 1000 * 1000);
+            }
             switch (n) {
             case 2:
                 ui_boot_hint("网络已通，正在认证中");
