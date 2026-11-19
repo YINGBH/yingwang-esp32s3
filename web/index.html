@@ -815,7 +815,9 @@ $('btnSave').onclick = async () => {
     ['charge_off', $('charge_off').checked ? 1 : 0],
     ['off_bright', $('off_bright').value],
   ];
-  /* 主题：选了内置就只发 theme；选了"自定义"就发 bg + accent（各自会存进 NVS） */
+  /* 主题：内置主题只发 theme；自定义则发 bg + accent。
+     注意：下面这些设置与主题选择无关，必须无条件下发——
+     以前它们被误放在 else 分支里，选内置主题时全部不下发（"保存成功但不生效"）。 */
   {
     const tid = $('theme').value;
     if (tid !== '-1') {
@@ -823,24 +825,24 @@ $('btnSave').onclick = async () => {
     } else {
       kv.push(['theme_bg', '0x' + $('theme_bg').value.replace('#', '')]);
       kv.push(['theme_accent', '0x' + $('theme_accent').value.replace('#', '')]);
-  kv.push(['deco_border', $('deco_border').value]);
-  kv.push(['deco_icon', $('deco_icon').value]);
-  kv.push(['deco_tag', $('deco_tag').value.trim() || '-']);
-  kv.push(['theme_auto', $('theme_auto').checked ? 1 : 0]);
-  kv.push(['theme_day', $('theme_day').value || '0']);
-  kv.push(['theme_night', $('theme_night').value || '1']);
-  kv.push(['bg_rotate', $('bg_rotate').value]);
-  kv.push(['esl_layout', $('esl_layout').value]);
-  kv.push(['esl_opts', String(
-    ($('esl_cal').checked ? 1 : 0) | ($('esl_weather').checked ? 2 : 0) |
-    ($('esl_sun').checked ? 4 : 0) | ($('esl_brand').checked ? 8 : 0))]);
-  kv.push(['esl_text', $('esl_text').value.trim() || '-']);
-  kv.push(['batt_est', $('batt_est').value || '0']);
-  kv.push(['probe_sec', $('probe_sec').value || '0']);
-  kv.push(['probe_plugged', $('probe_plugged').checked ? 1 : 0]);
-  kv.push(['batt_low', $('batt_low').value || '0']);
-  kv.push(['batt_keep', $('batt_keep').checked ? 1 : 0]);
     }
+    kv.push(['deco_border', $('deco_border').value]);
+    kv.push(['deco_icon', $('deco_icon').value]);
+    kv.push(['deco_tag', $('deco_tag').value.trim() || '-']);
+    kv.push(['theme_auto', $('theme_auto').checked ? 1 : 0]);
+    kv.push(['theme_day', $('theme_day').value || '0']);
+    kv.push(['theme_night', $('theme_night').value || '1']);
+    kv.push(['bg_rotate', $('bg_rotate').value]);
+    kv.push(['esl_layout', $('esl_layout').value]);
+    kv.push(['esl_opts', String(
+      ($('esl_cal').checked ? 1 : 0) | ($('esl_weather').checked ? 2 : 0) |
+      ($('esl_sun').checked ? 4 : 0) | ($('esl_brand').checked ? 8 : 0))]);
+    kv.push(['esl_text', $('esl_text').value.trim() || '-']);
+    kv.push(['batt_est', $('batt_est').value || '0']);
+    kv.push(['probe_sec', $('probe_sec').value || '0']);
+    kv.push(['probe_plugged', $('probe_plugged').checked ? 1 : 0]);
+    kv.push(['batt_low', $('batt_low').value || '0']);
+    kv.push(['batt_keep', $('batt_keep').checked ? 1 : 0]);
   }
   // 逐条下发并确认：以前一口气全发、不检查回复，某一条被板子拒了（比如 unknown_key）
   // 界面上完全看不出来，用户会以为"保存成功"
@@ -866,8 +868,47 @@ $('btnSave').onclick = async () => {
   } else {
     log('配置已下发，全部确认成功');
   }
+
+  /* 回读校验：板子可能"收下了但值不同"（范围裁剪 / 别名写错 / 被覆盖），
+     所以再 GET 一次逐项比对，把不一致的列出来。 */
+  try {
+    await send('GET');
+    const st = await waitAck(8000);
+    if (st && st.cfg) {
+      const c = st.cfg;
+      const mismatch = [];
+      const norm = (x) => {
+        let s = String(x).trim();
+        if (s === '-') s = '';          /* 板子把 "-" 存成空串 */
+        return s.replace(/^0+(?=\d)/, '');  /* "090" 与 "90" 视为相同 */
+      };
+      for (const [k, v] of kv) {
+        if (v === '' || v === null) continue;
+        /* 这几项板子不回传或做了压缩，跳过比对 */
+        if (k === 'wifi_pass' || k === 'portal_pass') continue;
+        if (k === 'theme_bg' || k === 'theme_accent') continue;
+        let actual;
+        if (k === 'rot') actual = st.rot;
+        else if (k === 'birthday') actual = st.birthday;
+        else if (k === 'static_ip') actual = st.static_ip;
+        else if (k === 'theme') actual = c.theme;
+        else actual = c[k];
+        if (norm(actual) !== norm(v)) {
+          mismatch.push(`${k}：期望 ${v}，板子是 ${actual}`);
+        }
+      }
+      if (mismatch.length) {
+        log('回读不一致：' + mismatch.join('；'));
+        alert('这些设置写进去了但值不一样（可能被范围裁剪）：\n' + mismatch.join('\n'));
+      } else {
+        log('回读校验通过：板子的值和页面一致');
+      }
+    }
+  } catch (e) {
+    log('回读校验跳过（' + e.message + '）');
+  }
+
   $('btnSave').disabled = false;
-  setTimeout(() => send('GET'), 800);
 };
 
 /* 启动自检：把 Web Serial 是否可用直接显示出来 */
