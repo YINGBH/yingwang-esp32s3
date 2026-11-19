@@ -252,6 +252,11 @@ void bsp_display_set_rotation(int deg)
     if (s_panel == NULL) {
         return;
     }
+    /* 必须和刷屏互斥：swap_xy/mirror/gap 改的是面板参数，
+       刷屏线程正在传 DMA 时改会被打断，表现为 spi_master 报错或花屏（踩过）。 */
+    if (s_lock) {
+        xSemaphoreTakeRecursive(s_lock, portMAX_DELAY);
+    }
     /* ST7789 的显存是 240x320，而屏幕可见区只有 240x240。
        不设 gap 时 0 度看起来正常（可见区正好在显存开头），
        但 swap_xy 之后坐标轴交换，可见区会在 320 那条轴上错位，
@@ -287,6 +292,9 @@ void bsp_display_set_rotation(int deg)
     /* 允许通过 SET rotgap=x,y 现场微调（存扩展设置） */
     esp_lcd_panel_set_gap(s_panel, gap_x + s_gap_adj_x, gap_y + s_gap_adj_y);
     s_rotation = deg;
+    if (s_lock) {
+        xSemaphoreGiveRecursive(s_lock);
+    }
     ESP_LOGW(TAG, "屏幕方向: %d 度", deg);
 }
 
