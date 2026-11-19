@@ -1341,6 +1341,13 @@ static const char *reset_text(esp_reset_reason_t r)
     case ESP_RST_DEEPSLEEP:return "深睡唤醒";
     case ESP_RST_BROWNOUT: return "掉电";
     case ESP_RST_SDIO:     return "SDIO";
+    case ESP_RST_USB:      return "USB 复位";
+    case ESP_RST_JTAG:     return "JTAG 复位";
+    case ESP_RST_EXT:      return "外部复位";
+    case ESP_RST_EFUSE:    return "eFuse 错误";
+    case ESP_RST_PWR_GLITCH: return "电源毛刺";
+    case ESP_RST_CPU_LOCKUP: return "CPU 锁死";
+    case ESP_RST_UNKNOWN:  return "未知";
     default:               return "其它";
     }
 }
@@ -3885,8 +3892,8 @@ static void daily_login_check(void)
 void app_main(void)
 {
     logring_start();       /* 越早越好：后面的日志都能留住 */
-    ESP_LOGW(TAG, "复位原因：%s（USB-JTAG 端口被打开时也会走到这里）",
-             reset_text(esp_reset_reason()));
+    ESP_LOGW(TAG, "复位原因：%s（code=%d）",
+             reset_text(esp_reset_reason()), (int) esp_reset_reason());
 #if BTN_SCAN_MODE
     button_scan_mode();
 #endif
@@ -3924,9 +3931,16 @@ void app_main(void)
     if (bsp_display_init() != ESP_OK) {
         ESP_LOGE(TAG, "屏幕初始化失败，继续跑");
     } else {
-        /* 开机动画（约 1.3 秒），结束后进主界面 */
-        boot_animate(1);
-        vTaskDelay(pdMS_TO_TICKS(250));
+        /* 开机动画（约 1.3 秒），结束后进主界面。
+           USB 复位（调试时打开串口触发）走极速版，别让人干等。 */
+        if (esp_reset_reason() == ESP_RST_USB) {
+            boot_animate(6);
+            vTaskDelay(pdMS_TO_TICKS(60));
+            ESP_LOGW(TAG, "USB 复位：快速开机（不重播完整动画）");
+        } else {
+            boot_animate(1);
+            vTaskDelay(pdMS_TO_TICKS(250));
+        }
     }
 
     /* 按配置应用屏幕方向（0/90/180/270） */
@@ -4042,10 +4056,13 @@ void app_main(void)
     /* 夜间 WiFi 省电：23:00-07:00 只在整点开一会儿 */
     xTaskCreate(night_wifi_task, "nightwifi", 4096, NULL, 2, NULL);
 
-    if (!wait_for_wifi(60000)) {
+    /* USB 复位（打开串口调试）时只等几秒，WiFi 在后台继续连 */
+    /* USB 复位是调试场景：界面先出来，WiFi 后台连，别让人干等 */
+    uint32_t wifi_wait = (esp_reset_reason() == ESP_RST_USB) ? 0 : 60000;
+    if (!wait_for_wifi(wifi_wait)) {
         /* 只用一个 WiFi：连不上就继续后台重连，不换成别的配置。
            长时间连不上由「离线 30 分钟重启」兜底。 */
-        ESP_LOGW(TAG, "60 秒还没连上 WiFi，继续重连");
+        ESP_LOGW(TAG, "%u 秒还没连上 WiFi，继续重连（后台）", (unsigned) (wifi_wait / 1000));
         set_state(ST_NOWIFI, "密码或信号有问题");
         s_boot_phase = false;      /* 不能让用户一直看开机画面 */
         s_force_redraw = true;
