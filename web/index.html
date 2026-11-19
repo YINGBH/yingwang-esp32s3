@@ -406,6 +406,7 @@ function renderStatus(o) {
     ['IP', o.ip || '--'],
     ['信号', o.rssi ? o.rssi + ' dBm' : '--'],
     ['内部内存', Math.round((o.heap||0)/1024) + ' KB'],
+    ['上次复位', o.reset || '--'],
   ].map(([k, v]) => `<div><b>${k}</b>${esc(v)}</div>`).join('');
 
   const st = o.stats;
@@ -478,13 +479,20 @@ async function connect(reuse) {
     // 上一次的句柄可能还开着，先关掉（关不掉就忽略）
     try { await p.close(); } catch (e) {}
     await p.open({ baudRate: 115200 });
+    /* ESP32-S3 的 USB-JTAG 串口：打开端口时若 DTR/RTS 被拉高，会命中芯片复位时序，
+       板子就重启一次。这里立刻释放两个信号，后续读写就不会再触发复位。
+       （首次那次复位发生在 open() 里，拦不住，属 USB-JTAG 的固有行为） */
+    try {
+      await p.setSignals({ dataTerminalReady: false, requestToSend: false });
+    } catch (e) { /* 某些平台不支持，忽略 */ }
     const myId = ++connId;             /* 新一代连接：旧 readLoop 收尾时据此退出 */
     writer = p.writable.getWriter();
     reader = p.readable.getReader();
     manualDisconnect = false;
     reconnectTries = 0;
     setConnected(true);
-    log(reuse ? '串口已重新连上' : '已连接串口');
+    log(reuse ? '串口已重新连上'
+              : '已连接串口（ESP32-S3 的 USB-JTAG 在打开端口时会让板子复位一次，属正常）');
     send('GET');
     readLoop(myId);
   } catch (e) {

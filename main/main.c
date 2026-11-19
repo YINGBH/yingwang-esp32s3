@@ -3885,6 +3885,8 @@ static void daily_login_check(void)
 void app_main(void)
 {
     logring_start();       /* 越早越好：后面的日志都能留住 */
+    ESP_LOGW(TAG, "复位原因：%s（USB-JTAG 端口被打开时也会走到这里）",
+             reset_text(esp_reset_reason()));
 #if BTN_SCAN_MODE
     button_scan_mode();
 #endif

@@ -78,6 +78,26 @@ static void reply(const char *json)
     fflush(stdout);
 }
 
+
+/* 复位原因：区分 USB 复位 / 看门狗 / 崩溃，排查"一连就重启"用 */
+static const char *reset_reason_str(void)
+{
+    switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:   return "上电";
+    case ESP_RST_EXT:       return "外部复位";
+    case ESP_RST_SW:        return "软件重启";
+    case ESP_RST_PANIC:     return "崩溃(panic)";
+    case ESP_RST_INT_WDT:   return "中断看门狗";
+    case ESP_RST_TASK_WDT:  return "任务看门狗";
+    case ESP_RST_WDT:       return "看门狗";
+    case ESP_RST_DEEPSLEEP: return "深睡唤醒";
+    case ESP_RST_BROWNOUT:  return "欠压";
+    case ESP_RST_SDIO:      return "SDIO";
+    case ESP_RST_USB:       return "USB 复位";
+    default:                return "其它";
+    }
+}
+
 static void reply_ok(void) { reply("{\"ok\":true}"); }
 
 static void reply_err(const char *msg)
@@ -154,6 +174,7 @@ static void send_status(void)
     cJSON_AddStringToObject(root, "ssid", conn ? wifi_sta_ssid() : "");
     cJSON_AddStringToObject(root, "ip", conn ? wifi_sta_ip() : "");
     cJSON_AddNumberToObject(root, "rssi", conn ? wifi_sta_rssi() : 0);
+    cJSON_AddStringToObject(root, "reset", reset_reason_str());
     cJSON_AddNumberToObject(root, "heap", (double) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     cJSON_AddNumberToObject(root, "psram", (double) heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     cJSON_AddNumberToObject(root, "uptime", (double) app_state_uptime_s());
