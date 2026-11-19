@@ -4112,8 +4112,10 @@ void app_main(void)
     xTaskCreate(night_wifi_task, "nightwifi", 4096, NULL, 2, NULL);
 
     /* USB 复位（打开串口调试）时只等几秒，WiFi 在后台继续连 */
-    /* USB 复位是调试场景：界面先出来，WiFi 后台连，别让人干等 */
-    uint32_t wifi_wait = (esp_reset_reason() == ESP_RST_USB) ? 0 : 60000;
+    /* USB 复位是调试场景：界面先出来，WiFi 后台连。
+       但不能等 0 秒：那样会立刻判定没连上，把状态卡成未连接；
+       而且 STA 正在关联时扫描会被拒，还会误判成目标不在附近。8 秒够快也够稳。 */
+    uint32_t wifi_wait = (esp_reset_reason() == ESP_RST_USB) ? 8000 : 60000;
     if (!wait_for_wifi(wifi_wait)) {
         /* 只用一个 WiFi：连不上就继续后台重连，不换成别的配置。
            长时间连不上由「离线 30 分钟重启」兜底。 */
@@ -4307,6 +4309,12 @@ void app_main(void)
             config_store_snapshot(&cf);
             int8_t rssi = wifi_sta_target_rssi(cf.wifi_ssid);
             if (rssi <= -120) {
+                /* 刚开机时 STA 可能正在关联，扫描会被驱动拒绝（返回 -120），
+                   此时判定不在附近是错的，会让状态卡住、长时间不探测。 */
+                if (esp_timer_get_time() / 1000 < 25000) {
+                    vTaskDelay(pdMS_TO_TICKS(2000));
+                    continue;
+                }
                 set_state(ST_NOWIFI, "目标不在附近");
                 if (!absent_logged) {
                     ESP_LOGI(TAG, "附近没有 %s，等着（不重连）", cf.wifi_ssid);
