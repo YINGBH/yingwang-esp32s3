@@ -930,13 +930,10 @@ $('btnSave').onclick = async () => {
         /* 这几项板子不回传或做了压缩，跳过比对 */
         if (k === 'wifi_pass' || k === 'portal_pass') continue;
         if (k === 'theme_bg' || k === 'theme_accent') continue;
-        let actual;
-        if (k === 'rot') actual = st.rot;
-        else if (k === 'birthday') actual = st.birthday;
-        else if (k === 'static_ip') actual = st.static_ip;
-        else if (k === 'theme') actual = c.theme;
-        else actual = c[k];
-        if (norm(actual) !== norm(v)) {
+        /* 板子把这些字段分放在两处：GET 顶层（rot/birthday/static_ip…）和 cfg 对象里。
+           统一按"先 cfg、再顶层"取，别再硬编码某一个键的路径（之前 static_ip 就取错过）。 */
+        let actual = (c[k] !== undefined) ? c[k] : st[k];
+        if (norm(actual ?? '') !== norm(v)) {
           mismatch.push(`${k}：期望 ${v}，板子是 ${actual}`);
         }
       }

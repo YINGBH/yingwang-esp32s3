@@ -85,7 +85,15 @@ typedef struct {
     uint8_t  batt_low_keepon; /* 1 = 低电量时保持常亮（不自动息屏） */
     uint16_t probe_sec;       /* 电池供电时的探测间隔（秒），0 = 默认 120 */
     uint8_t  probe_plugged;   /* 1 = 插电时也用 probe_sec（默认 0：插电用 15 秒） */
+    uint8_t  esl_opts_valid;  /* 1 = esl_opts 是用户显式设的（含 0=全关）；0 = 老配置，0 按全开兼容 */
 } app_settings_t;
+
+/**
+ * 价签元素开关的生效值：
+ *   - 用户显式设过（含 0）→ 原样返回
+ *   - 老配置（未设过）→ 0 视作全开 0x0F
+ */
+uint8_t config_esl_opts(const app_settings_t *c);
 
 /**
  * 初始化并加载配置。

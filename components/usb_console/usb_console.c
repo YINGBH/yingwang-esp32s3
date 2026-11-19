@@ -260,7 +260,7 @@ static void send_status(void)
     cJSON_AddNumberToObject(c, "batt_used", cfg.batt_used_min);
     cJSON_AddNumberToObject(c, "batt_est", cfg.batt_est_hours);
     cJSON_AddNumberToObject(c, "esl_layout", cfg.esl_layout);
-    cJSON_AddNumberToObject(c, "esl_opts", cfg.esl_opts ? cfg.esl_opts : 0x0F);
+    cJSON_AddNumberToObject(c, "esl_opts", config_esl_opts(&cfg));
     cJSON_AddStringToObject(c, "esl_text", cfg.esl_text);
     /* 站点参数：门户地址 / AC IP / 校园网 SSID，网页后台用这三项回填输入框 */
     cJSON_AddStringToObject(c, "portal_base", cfg.portal_base);
@@ -493,13 +493,14 @@ static void do_set(char *kv)
         cfg.batt_used_min = (uint16_t) v;
     } else if (strcmp(key, "esl_layout") == 0) {
         cfg.esl_layout = (uint8_t) ((atoi(val) != 0) ? 1 : 0);
-        esl_ble_set_ui(cfg.esl_layout, cfg.esl_opts ? cfg.esl_opts : 0x0F, cfg.esl_text);
+        esl_ble_set_ui(cfg.esl_layout, config_esl_opts(&cfg), cfg.esl_text);
     } else if (strcmp(key, "esl_opts") == 0) {
         int v = atoi(val);
         if (v < 0) {
             v = 0;
         }
         cfg.esl_opts = (uint8_t) (v & 0x0F);
+        cfg.esl_opts_valid = 1;      /* 显式设置：0 也照存，不再替换成全开 */
         esl_ble_set_ui(cfg.esl_layout, cfg.esl_opts, cfg.esl_text);
     } else if (strcmp(key, "esl_text") == 0) {
         if (strcmp(val, "-") == 0) {
@@ -507,7 +508,7 @@ static void do_set(char *kv)
         } else {
             strlcpy(cfg.esl_text, val, sizeof(cfg.esl_text));
         }
-        esl_ble_set_ui(cfg.esl_layout, cfg.esl_opts ? cfg.esl_opts : 0x0F, cfg.esl_text);
+        esl_ble_set_ui(cfg.esl_layout, config_esl_opts(&cfg), cfg.esl_text);
     } else if (strcmp(key, "theme_auto") == 0) {
         cfg.theme_auto = (uint8_t) (atoi(val) != 0);
     } else if (strcmp(key, "theme_day") == 0 || strcmp(key, "theme_night") == 0) {
@@ -617,7 +618,7 @@ static void hito_task(void *arg)
         vTaskDelete(NULL);
         return;
     }
-    esl_ble_set_ui(cfg.esl_layout, cfg.esl_opts ? cfg.esl_opts : 0x0F, cfg.esl_text);
+    esl_ble_set_ui(cfg.esl_layout, config_esl_opts(&cfg), cfg.esl_text);
     app_state_request(APP_ACT_REDRAW);
 
     cJSON *r = cJSON_CreateObject();

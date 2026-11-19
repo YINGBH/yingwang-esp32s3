@@ -96,6 +96,18 @@ esp_err_t config_store_init(const app_settings_t *defaults)
     return ESP_OK;
 }
 
+/* 价签元素开关的生效值（见头文件注释） */
+uint8_t config_esl_opts(const app_settings_t *c)
+{
+    if (c == NULL) {
+        return 0x0F;
+    }
+    if (c->esl_opts_valid) {
+        return (uint8_t) (c->esl_opts & 0x0F);
+    }
+    return c->esl_opts ? (uint8_t) (c->esl_opts & 0x0F) : 0x0F;
+}
+
 const app_settings_t *config_store_get(void)
 {
     return &s_cfg;
